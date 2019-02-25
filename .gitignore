@@ -1,3 +1,9 @@
+# Link to GAMS system directory
+gams
+
+# Executable
+gams2mosdex
+
 # Prerequisites
 *.d
 
@@ -30,3 +36,8 @@
 *.exe
 *.out
 *.app
+
+# Eclipse project files
+.cproject
+.project
+.settings/
