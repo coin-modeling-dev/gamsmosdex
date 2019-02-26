@@ -33,7 +33,84 @@ public:
    std::set<int> uelIdxs;
 };
 
+
+// a block of coefficients
+class Coefficient
+{
+public:
+   int rowSymIdx;
+   int colSymIdx;
+
+   // for each column domain indicates the row domain index it equals to, or -1 if none
+   int colDomEqualsRowDom[GMS_MAX_INDEX_DIM];
+
+   Coefficient(int rowSymIdx_, int colSymIdx_)
+   : rowSymIdx(rowSymIdx_), colSymIdx(colSymIdx_)
+   {
+      for( int i = 0; i < GMS_MAX_INDEX_DIM; ++i )
+         colDomEqualsRowDom[i] = -1;
+   }
+
+   void analyzeDomains(dctHandle_t dct)
+   {
+      int rowDomIdx[GMS_MAX_INDEX_DIM];
+      int rowDim;
+      int colDomIdx[GMS_MAX_INDEX_DIM];
+      int colDim;
+
+      dctSymDomIdx(dct, rowSymIdx, rowDomIdx, &rowDim);
+      dctSymDomIdx(dct, colSymIdx, colDomIdx, &colDim);
+
+      // performance of this might be slow
+      for( int c = 0; c < colDim; ++c )
+      {
+         for( int r = 0; r < rowDim && colDomEqualsRowDom[c] < 0; ++r )
+         {
+            if( rowDomIdx[r] != colDomIdx[c] )
+               continue;
+
+            // std::cout << "compare rowsymbol " << rowSymIdx << " colsymbol " << colSymIdx << " coldim " << c << " rowdim " << r << std::endl;
+
+            bool uelsequal = true;
+            for( auto& e : entries )
+            {
+               int rowUels[GMS_MAX_INDEX_DIM];
+               int colUels[GMS_MAX_INDEX_DIM];
+               int symindex;
+               int dim;
+
+               dctRowUels(dct, std::get<0>(e), &symindex, rowUels, &dim);
+               dctColUels(dct, std::get<1>(e), &symindex, colUels, &dim);
+
+               char uelLabel[GMS_SSSIZE];
+               uelLabel[0] = '\0';
+               dctUelLabel(dct, rowUels[r], uelLabel, uelLabel, sizeof(uelLabel));
+               // std::cout << "  row: " << rowUels[r] << ' ' << uelLabel;
+               uelLabel[0] = '\0';
+               dctUelLabel(dct, colUels[c], uelLabel, uelLabel, sizeof(uelLabel));
+               // std::cout << "  col: " << colUels[c] << ' ' << uelLabel << std::endl;
+
+               if( rowUels[r] != colUels[c] )
+               {
+                  uelsequal = false;
+                  break;
+               }
+            }
+
+            if( uelsequal )
+               colDomEqualsRowDom[c] = r;
+         }
+      }
+   }
+
+   // equation index, variable index, coefficient
+   std::vector<std::tuple<int, int, double> > entries;
+
+};
+
 std::vector<Entity> entities;
+// equation symbol index, variable symbol index
+std::map<std::pair<int, int>, Coefficient> coefs;
 
 static
 void analyzeDict(
@@ -120,8 +197,53 @@ void printInputDataModel(
       {
          char domName[GMS_SSSIZE];
          dctDomName(dct, domIdx[d], domName, sizeof(domName));
-         std::cout << "  *" << domName << ": String" << std::endl;
+         std::cout << "  *" << domName << "#" << e.name << ": String" << std::endl;
       }
+   }
+
+   for( auto& cit : coefs )
+   {
+      Coefficient& c(cit.second);
+
+      char equName[GMS_SSSIZE];
+      char varName[GMS_SSSIZE];
+
+      dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
+      dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
+
+      std::cout << "coef_" << equName << "_" << varName << ":" << std::endl;
+
+      int rowDomIdx[GMS_MAX_INDEX_DIM];
+      int rowDim;
+      int colDomIdx[GMS_MAX_INDEX_DIM];
+      int colDim;
+
+      dctSymDomIdx(dct, c.rowSymIdx, rowDomIdx, &rowDim);
+      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
+
+      char domName[GMS_SSSIZE];
+
+      for( int r = 0; r < rowDim; ++r )
+      {
+         dctDomName(dct, rowDomIdx[r], domName, sizeof(domName));
+         std::cout << "  " << domName << "#" << equName << ": String" << std::endl;
+      }
+
+      for( int cd = 0; cd < colDim; ++cd )
+      {
+         char domName[GMS_SSSIZE];
+         dctDomName(dct, colDomIdx[cd], domName, sizeof(domName));
+
+         std::cout << "  ";
+         if( c.colDomEqualsRowDom[cd] >= 0 )
+             std::cout << "(";
+         std::cout << domName << "#" << varName << ": String";
+         if( c.colDomEqualsRowDom[cd] >= 0 )
+            std::cout << ")";
+         std::cout << std::endl;
+      }
+
+      std::cout << "  val: Double" << std::endl;
    }
 }
 
@@ -176,83 +298,6 @@ void printIndexData(
 
 }
 
-// a block of coefficients
-class Coefficient
-{
-public:
-   int rowSymIdx;
-   int colSymIdx;
-
-   // for each column domain indicates the row domain index it equals to, or -1 if none
-   int colDomEqualsRowDom[GMS_MAX_INDEX_DIM];
-
-   Coefficient(int rowSymIdx_, int colSymIdx_)
-   : rowSymIdx(rowSymIdx_), colSymIdx(colSymIdx_)
-   {
-      for( int i = 0; i < GMS_MAX_INDEX_DIM; ++i )
-         colDomEqualsRowDom[i] = -1;
-   }
-
-   void analyzeDomains(dctHandle_t dct)
-   {
-      int rowDomIdx[GMS_MAX_INDEX_DIM];
-      int rowDim;
-      int colDomIdx[GMS_MAX_INDEX_DIM];
-      int colDim;
-
-      dctSymDomIdx(dct, rowSymIdx, rowDomIdx, &rowDim);
-      dctSymDomIdx(dct, colSymIdx, colDomIdx, &colDim);
-
-      // performance of this might be slow
-      for( int c = 0; c < colDim; ++c )
-      {
-         for( int r = 0; r < rowDim && colDomEqualsRowDom[c] < 0; ++r )
-         {
-            if( rowDomIdx[r] != colDomIdx[c] )
-               continue;
-
-            // std::cout << "compare rowsymbol " << rowSymIdx << " colsymbol " << colSymIdx << " coldim " << c << " rowdim " << r << std::endl;
-
-            bool uelsequal = true;
-            for( auto& e : entries )
-            {
-               int rowUels[GMS_MAX_INDEX_DIM];
-               int colUels[GMS_MAX_INDEX_DIM];
-               int symindex;
-               int dim;
-
-               dctRowUels(dct, std::get<0>(e), &symindex, rowUels, &dim);
-               dctColUels(dct, std::get<1>(e), &symindex, colUels, &dim);
-
-               char uelLabel[GMS_SSSIZE];
-               uelLabel[0] = '\0';
-               dctUelLabel(dct, rowUels[r], uelLabel, uelLabel, sizeof(uelLabel));
-               // std::cout << "  row: " << rowUels[r] << ' ' << uelLabel;
-               uelLabel[0] = '\0';
-               dctUelLabel(dct, colUels[c], uelLabel, uelLabel, sizeof(uelLabel));
-               // std::cout << "  col: " << colUels[c] << ' ' << uelLabel << std::endl;
-
-               if( rowUels[r] != colUels[c] )
-               {
-                  uelsequal = false;
-                  break;
-               }
-            }
-
-            if( uelsequal )
-               colDomEqualsRowDom[c] = r;
-         }
-      }
-   }
-
-   // equation index, variable index, coefficient
-   std::vector<std::tuple<int, int, double> > entries;
-
-};
-
-// equation symbol index, variable symbol index
-std::map<std::pair<int, int>, Coefficient> coefs;
-
 void analyzeMatrix(
    gmoHandle_t gmo,
    dctHandle_t dct)
@@ -306,11 +351,18 @@ void printCoefficientData(
 
    char uelLabel[GMS_SSSIZE];
 
+   int rowDomIdx[GMS_MAX_INDEX_DIM];
+   int colDomIdx[GMS_MAX_INDEX_DIM];
+   char domName[GMS_SSSIZE];
+
    for( auto& cit : coefs )
    {
       Coefficient& c(cit.second);
       dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
       dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
+
+      dctSymDomIdx(dct, c.rowSymIdx, rowDomIdx, &rowDim);
+      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
 
       std::cout << "coef_" << equName << "_" << varName << ":" << std::endl;
       for( auto& e : c.entries )
@@ -323,9 +375,11 @@ void printCoefficientData(
          {
             for( int d = 0; d < rowDim; ++d )
             {
+               dctDomName(dct, rowDomIdx[d], domName, sizeof(domName));
+
                uelLabel[0] = '\0';
                dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
-               std::cout << "  " << uelLabel;
+               std::cout << "  " << domName << "#" << equName << ":" << uelLabel;
             }
             std::cout << ", ";
          }
@@ -334,20 +388,66 @@ void printCoefficientData(
          {
             for( int d = 0; d < colDim; ++d )
             {
+               dctDomName(dct, colDomIdx[d], domName, sizeof(domName));
+
                uelLabel[0] = '\0';
                dctUelLabel(dct, colUels[d], uelLabel, uelLabel, sizeof(uelLabel));
-               std::cout << "  " << uelLabel;
+
+               std::cout << "  ";
                if( c.colDomEqualsRowDom[d] >= 0 )
-                  std::cout << "(=" << c.colDomEqualsRowDom[d] << ")";
+                  std::cout << '(';
+               std::cout << domName << "#" << varName << ":" << uelLabel;
+               if( c.colDomEqualsRowDom[d] >= 0 )
+                  std::cout << ')';
             }
             std::cout << ", ";
          }
 
-         std::cout << std::get<2>(e) << std::endl;
+         std::cout << "val:" << std::get<2>(e) << std::endl;
       }
    }
 }
 
+void printCoefficients(
+   dctHandle_t dct
+   )
+{
+   std::cout << std::endl;
+   std::cout << "COEFFICIENTS:" << std::endl;
+
+   char equName[GMS_SSSIZE];
+   char varName[GMS_SSSIZE];
+
+   for( auto& cit : coefs )
+   {
+      Coefficient& c(cit.second);
+
+      dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
+      dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
+
+      std::cout << "Constraints: " << equName << std::endl;
+      std::cout << "Variables: " << varName << std::endl;
+      std::cout << "Entries: coef_" << equName << "_" << varName << ".val" << std::endl;
+      std::cout << "Condition:";
+
+      int colDomIdx[GMS_MAX_INDEX_DIM];
+      int colDim;
+      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
+
+      for( int d = 0; d < colDim; ++d )
+      {
+         if( c.colDomEqualsRowDom[d] >= 0 )
+         {
+            char domName[GMS_SSSIZE];
+            dctDomName(dct, colDomIdx[d], domName, sizeof(domName));
+            std::cout << " "    << varName << "." << domName << '#' << varName;
+            std::cout << " == " << equName << "." << domName << "#" << equName;
+         }
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
+   }
+}
 
 
 int main(
@@ -408,6 +508,7 @@ int main(
    printInputDataModel(dct);
    printIndexData(dct);
    printCoefficientData(dct);
+   printCoefficients(dct);
 
    rc = EXIT_SUCCESS;
 
