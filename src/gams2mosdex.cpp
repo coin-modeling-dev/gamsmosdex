@@ -408,6 +408,28 @@ void printCoefficientData(
    }
 }
 
+void printEntities(
+   dctHandle_t dct,
+   int type
+   )
+{
+   std::cout << std::endl;
+   if( type == Entity::Variable )
+      std::cout << "VARIABLES:" << std::endl;
+   else
+      std::cout << "EQUATIONS:" << std::endl;
+
+   for( auto& e : entities )
+   {
+      if( e.type != type )
+         continue;
+
+      std::cout << "Name: " << e.name << std::endl;
+      std::cout << "Index: " << e.name << "_index" << std::endl;
+      std::cout << std::endl;
+   }
+}
+
 void printCoefficients(
    dctHandle_t dct
    )
@@ -508,6 +530,8 @@ int main(
    printInputDataModel(dct);
    printIndexData(dct);
    printCoefficientData(dct);
+   printEntities(dct, Entity::Variable);
+   printEntities(dct, Entity::Equation);
    printCoefficients(dct);
 
    rc = EXIT_SUCCESS;
