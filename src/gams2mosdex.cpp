@@ -185,10 +185,10 @@ void printInputDataModel(
 
    for( auto& e : entities )
    {
-      std::cout << e.name << "_index:" << std::endl;
-
       if( e.dim == 0 )
          continue;
+
+      std::cout << e.name << "_index:" << std::endl;
 
       int dim;
       dctSymDomIdx(dct, e.symIdx, domIdx, &dim);
@@ -261,6 +261,9 @@ void printIndexData(
 
    for( auto& e : entities )
    {
+      if( e.dim == 0 )
+         continue;
+
       std::cout << e.name << "_index:" << std::endl;
 
       for( int idx = dctSymOffset(dct, e.symIdx); ; ++idx )
@@ -425,7 +428,10 @@ void printEntities(
          continue;
 
       std::cout << "Name: " << e.name << std::endl;
-      std::cout << "Index: " << e.name << "_index" << std::endl;
+      if( e.dim > 0 )
+         std::cout << "Index: " << e.name << "_index" << std::endl;
+      else
+         std::cout << "Index: self" << std::endl;
       std::cout << std::endl;
    }
 }
