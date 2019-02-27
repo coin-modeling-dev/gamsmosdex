@@ -219,13 +219,8 @@ void analyzeDict(
       // thus, should be enough to do this for 0-dim symbols
       if( symDim == 0 )
       {
-         int uelIndices[GMS_MAX_INDEX_DIM];
-         memset(uelIndices, 0, sizeof(uelIndices));
-         int idx;
-         void* ret = dctFindFirstRowCol(dct, i, uelIndices, &idx);
-         if( ret == NULL )
-            symbols.back().type = Symbol::None;
-         else if( symType == dctvarSymType  )
+         int idx = dctSymOffset(dct, i);
+         if( symType == dctvarSymType  )
          {
             // FIXME this prints a message if the var is the objective var that has been reformulated out, but then returns -2
             idx = gmoGetjSolver(gmo, idx);
@@ -592,11 +587,7 @@ void printSymbols(
       if( e.type == Symbol::Variable )
       {
          // get a col for this symbol: for bounds if dim=0 and for vartype
-         int uelIndices[GMS_MAX_INDEX_DIM];
-         memset(uelIndices, 0, sizeof(uelIndices));
-         int colidx;
-         void* ret = dctFindFirstRowCol(dct, e.symIdx, uelIndices, &colidx);
-         assert(ret != NULL);
+         int colidx = dctSymOffset(dct, e.symIdx);
          colidx = gmoGetjSolver(gmo, colidx);
          assert(colidx >= 0 && colidx < gmoN(gmo));
 
@@ -648,11 +639,7 @@ void printSymbols(
       else if( e.type == Symbol::Constraint )
       {
          // get a row for this symbol: for rhs if dim=0 and for rowsense
-         int uelIndices[GMS_MAX_INDEX_DIM];
-         memset(uelIndices, 0, sizeof(uelIndices));
-         int rowidx;
-         void* ret = dctFindFirstRowCol(dct, e.symIdx, uelIndices, &rowidx);
-         assert(ret != NULL);
+         int rowidx = dctSymOffset(dct, e.symIdx);
          rowidx = gmoGetiSolver(gmo, rowidx);
          assert(rowidx >= 0 && rowidx < gmoM(gmo));
 
