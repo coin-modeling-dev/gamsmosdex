@@ -710,8 +710,7 @@ void printSymbols(
          }
          w.EndObject();
       }
-
-      if( e.type == Symbol::Constraint )
+      else if( e.type == Symbol::Constraint )
       {
          // get a row for this symbol: for rhs if dim=0 and for rowsense
          int uelIndices[GMS_MAX_INDEX_DIM];
@@ -758,6 +757,17 @@ void printSymbols(
                w.String("UNSUPPORTED");
                break;
          }
+
+         w.Key("TYPE");
+         w.String("Linear");
+      }
+      else if( e.type == Symbol::Objective )
+      {
+         w.Key("SENSE");
+         if( gmoSense(gmo) == gmoObj_Min )
+            w.String("minimize");
+         else
+            w.String("maximize");
 
          w.Key("TYPE");
          w.String("Linear");
