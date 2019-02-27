@@ -770,14 +770,13 @@ int main(
    char** argv
 )
 {
+   char buffer[GMS_SSSIZE];
    gmoHandle_t gmo;
    gevHandle_t gev;
    dctHandle_t dct;
    int rc = EXIT_FAILURE;
 
 #if 0
-   char buffer[GMS_SSSIZE];
-
    if( argc < 2 )
    {
       printf("usage: %s <cntrlfile>\n", argv[0]);
@@ -842,7 +841,16 @@ int main(
    rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(s);
    writer.StartObject();
 
+   writer.Key("PROBLEM");
+   writer.StartObject();
+   writer.Key("NAME");
+   gmoNameModel(gmo, buffer);
+   writer.String(buffer);
+   writer.EndObject();
+
    printInputDataModel(writer, dct);
+
+   // TODO OutputDataModel
 
    writer.Key("DATA");
    writer.StartObject();
