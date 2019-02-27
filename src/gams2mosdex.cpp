@@ -204,15 +204,15 @@ void analyzeDict(
       symbols.back().text = symText;
 
       dctSymDomIdx(dct, i, symDomIdx, &symDim);
-      std::cout << "Symbol " << i << " = " << symName << '(';
+      // std::cout << "Symbol " << i << " = " << symName << '(';
       for( int d = 0; d < symDim; ++d )
       {
-         if( d > 0 )
-            std::cout << ",";
-         std::cout << domains.at(symDomIdx[d]).name;
+         //if( d > 0 )
+         //   std::cout << ",";
+         //std::cout << domains.at(symDomIdx[d]).name;
          symbols.back().dom.push_back(&domains[symDomIdx[d]]);
       }
-      std::cout << ") type " << symType << " dim " << symDim << " (" << symText << ")" << std::endl;
+      //std::cout << ") type " << symType << " dim " << symDim << " (" << symText << ")" << std::endl;
 
       // check whether symbol is actually used in model
       // if it was the original objective variable or objective constraint, then it could have been reformulated out, though it is still in dct
@@ -345,8 +345,6 @@ void printInputDataModel(
    dctHandle_t dct
    )
 {
-   std::cout << std::endl;
-   std::cout << "INPUT_DATA_MODEL" << std::endl;
    w.Key("INPUT_DATA_MODEL");
    w.StartObject();
 
@@ -358,23 +356,17 @@ void printInputDataModel(
       if( e.dim() == 0 )
          continue;
 
-      std::string indexname = e.name + "_index";
-      std::cout << indexname << ":" << std::endl;
-      w.Key(indexname);
+      w.Key(e.name + "_index");
 
       w.StartObject();
       for( int d = 0; d < e.dim(); ++d )
       {
-         std::string key = std::string("*") + e.getDomName(d);
-         std::cout << "  " << key << ": String" << std::endl;
-         w.Key(key);
+         w.Key(std::string("*") + e.getDomName(d));
          w.String("String");
       }
 
       if( e.type == Symbol::Variable )
       {
-         std::cout << "  lb: Double" << std::endl;
-         std::cout << "  ub: Double" << std::endl;
          w.Key("lb");
          w.String("Double");
          w.Key("ub");
@@ -382,7 +374,6 @@ void printInputDataModel(
       }
       else if( e.type == Symbol::Constraint )
       {
-         std::cout << "  rhs: Double" << std::endl;
          w.Key("rhs");
          w.String("Double");
       }
@@ -394,37 +385,25 @@ void printInputDataModel(
    {
       Coefficient& c(cit.second);
 
-      std::cout << c.getName() << ":" << std::endl;
       w.Key(c.getName());
 
       w.StartObject();
       for( int r = 0; r < c.equation.dim(); ++r )
       {
          std::string key = std::string("*") + c.equation.getDomName(r);
-         std::cout << "  " << key << ": String" << std::endl;
          w.Key(key);
          w.String("String");
       }
 
       for( int cd = 0; cd < c.variable.dim(); ++cd )
       {
-         std::cout << "  ";
-         if( c.varDomEqualsEquDom[cd] >= 0 )
-             std::cout << "(";
-         std::string key = std::string("*") + c.variable.getDomName(cd);
-         std::cout << key << ": String";
-         if( c.varDomEqualsEquDom[cd] >= 0 )
-            std::cout << ")";
-         std::cout << std::endl;
-
          if( c.varDomEqualsEquDom[cd] < 0 )
          {
-            w.Key(key);
+            w.Key(std::string("*") + c.variable.getDomName(cd));
             w.String("String");
          }
       }
 
-      std::cout << "  val: Double" << std::endl;
       w.Key("val");
       w.String("Double");
 
@@ -453,9 +432,7 @@ void printIndexData(
       if( e.type == Symbol::None )
          continue;
 
-      std::string indexname = e.name + "_index";
-      std::cout << indexname << ":" << std::endl;
-      w.Key(indexname);
+      w.Key(e.name + "_index");
 
       w.StartArray();
 
@@ -488,10 +465,7 @@ void printIndexData(
             uelLabel[0] = '\0';
             dctUelLabel(dct, uelIndices[d], uelLabel, uelLabel, sizeof(uelLabel));
 
-            std::string key = e.getDomName(d);
-            std::cout << "  " << key << ":" << uelLabel;
-
-            w.Key(key);
+            w.Key(e.getDomName(d));
             w.String(uelLabel);
          }
 
@@ -499,7 +473,6 @@ void printIndexData(
          {
             double lb = gmoGetVarLowerOne(gmo, gmoGetjSolver(gmo, idx));
             double ub = gmoGetVarUpperOne(gmo, gmoGetjSolver(gmo, idx));
-            std::cout << "  lb:" << lb << " ub:" << ub;
 
             if( lb != gmoMinf(gmo) )
             {
@@ -514,14 +487,10 @@ void printIndexData(
          }
          else if( e.type == Symbol::Constraint )
          {
-            double rhs = gmoGetRhsOne(gmo, gmoGetiSolver(gmo, idx));
-            std::cout << "  rhs:" << rhs;
-
             w.Key("rhs");
-            w.Double(rhs);
+            w.Double(gmoGetRhsOne(gmo, gmoGetiSolver(gmo, idx)));
          }
 
-         std::cout << std::endl;
          w.EndObject();
       }
 
@@ -543,7 +512,6 @@ void printCoefficientData(
    {
       Coefficient& c(cit.second);
 
-      std::cout << c.getName() << ":" << std::endl;
       w.Key(c.getName());
       w.StartArray();
 
@@ -560,35 +528,22 @@ void printCoefficientData(
             uelLabel[0] = '\0';
             dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
 
-            std::string key = c.equation.getDomName(d);
-            std::cout << "  " << key << ":" << uelLabel;
-            w.Key(key);
+            w.Key(c.equation.getDomName(d));
             w.String(uelLabel);
          }
-         std::cout << ", ";
 
          for( int d = 0; d < c.variable.dim(); ++d )
          {
             uelLabel[0] = '\0';
             dctUelLabel(dct, colUels[d], uelLabel, uelLabel, sizeof(uelLabel));
 
-            std::cout << "  ";
-            if( c.varDomEqualsEquDom[d] >= 0 )
-               std::cout << '(';
-            std::string key = c.variable.getDomName(d);
-            std::cout << key << ":" << uelLabel;
-            if( c.varDomEqualsEquDom[d] >= 0 )
-               std::cout << ')';
-
             if( c.varDomEqualsEquDom[d] < 0 )
             {
-               w.Key(key);
+               w.Key(c.variable.getDomName(d));
                w.String(uelLabel);
             }
          }
-         std::cout << ", ";
 
-         std::cout << "val:" << std::get<2>(e) << std::endl;
          w.Key("val");
          w.Double(std::get<2>(e));
 
@@ -606,22 +561,12 @@ void printSymbols(
    int type
    )
 {
-   std::cout << std::endl;
    if( type == Symbol::Variable )
-   {
-      std::cout << "VARIABLES:" << std::endl;
       w.Key("VARIABLES");
-   }
    else if( type == Symbol::Constraint )
-   {
-      std::cout << "CONSTRAINTS:" << std::endl;
       w.Key("CONSTRAINTS");
-   }
    else
-   {
-      std::cout << "DECISION_EXPRESSIONS:" << std::endl;
       w.Key("DECISION_EXPRESSIONS");
-   }
 
    w.StartArray();
    for( auto& e : symbols )
@@ -631,20 +576,16 @@ void printSymbols(
 
       w.StartObject();
 
-      std::cout << "Name: " << e.name << std::endl;
       w.Key("NAME");
       w.String(e.name);
 
       w.Key("INDEX");
       if( e.dim() > 0 )
       {
-         std::string indexname = e.name + "_index";
-         std::cout << "Index: " << indexname << std::endl;
-         w.String(indexname);
+         w.String(e.name + "_index");
       }
       else
       {
-         std::cout << "Index: self" << std::endl;
          w.String("self");
       }
 
@@ -662,17 +603,14 @@ void printSymbols(
          switch( gmoGetVarTypeOne(gmo, colidx) )
          {
             case gmovar_B:
-               std::cout << "TYPE: Binary" << std::endl;
                w.Key("TYPE");
                w.String("Binary");
                break;
             case gmovar_I:
-               std::cout << "TYPE: Integer" << std::endl;
                w.Key("TYPE");
                w.String("Integer");
                break;
             case gmovar_X:
-               std::cout << "TYPE: Continuous" << std::endl;
                w.Key("TYPE");
                w.String("Continuous");
                break;
@@ -683,7 +621,6 @@ void printSymbols(
                break;
          }
 
-         std::cout << "BOUNDS: ";
          w.Key("BOUNDS");
          w.StartObject();
          if( e.dim() > 0 )
@@ -697,13 +634,11 @@ void printSymbols(
          {
             if( gmoGetVarLowerOne(gmo, colidx) != gmoMinf(gmo) )
             {
-               std::cout << "Lower: " << gmoGetVarLowerOne(gmo, colidx);
                w.Key("LOWER");
                w.Double(gmoGetVarLowerOne(gmo, colidx));
             }
             if( gmoGetVarUpperOne(gmo, colidx) != gmoPinf(gmo) )
             {
-               std::cout << "Upper: " << gmoGetVarUpperOne(gmo, colidx);
                w.Key("UPPER");
                w.Double(gmoGetVarUpperOne(gmo, colidx));
             }
@@ -721,38 +656,26 @@ void printSymbols(
          rowidx = gmoGetiSolver(gmo, rowidx);
          assert(rowidx >= 0 && rowidx < gmoM(gmo));
 
-         std::cout << "RHS: ";
          w.Key("RHS");
          if( e.dim() > 0 )
-         {
-            std::cout << e.name << "_index.rhs" << std::endl;
             w.String(e.name + "_index.rhs");
-         }
          else
-         {
-            std::cout << gmoGetRhsOne(gmo, rowidx) << std::endl;
             w.Double(gmoGetRhsOne(gmo, rowidx));
-         }
 
-         std::cout << "SENSE: ";
          w.Key("SENSE");
          switch( gmoGetEquTypeOne(gmo, rowidx) )
          {
             case gmoequ_E :
             case gmoequ_B :
-               std::cout << "==" << std::endl;;
                w.String("==");
                break;
             case gmoequ_G :
-               std::cout << ">=" << std::endl;;
                w.String(">=");
                break;
             case gmoequ_L :
-               std::cout << "<=" << std::endl;;
                w.String("<=");
                break;
             default:
-               std::cout << "N/A" << std::endl;
                std::cerr << "Unsupported equation type" << std::endl;
                w.String("UNSUPPORTED");
                break;
@@ -773,7 +696,6 @@ void printSymbols(
          w.String("Linear");
       }
 
-      std::cout << std::endl;
       w.EndObject();
    }
    w.EndArray();
@@ -784,8 +706,6 @@ void printCoefficients(
    dctHandle_t dct
    )
 {
-   std::cout << std::endl;
-   std::cout << "COEFFICIENTS:" << std::endl;
    w.Key("COEFFICIENTS");
 
    w.StartArray();
@@ -795,18 +715,14 @@ void printCoefficients(
 
       w.StartObject();
 
-      std::cout << "Constraints: " << c.equation.name << std::endl;
       w.Key("CONSTRAINTS");
       w.String(c.equation.name);
 
-      std::cout << "Variables: " << c.variable.name << std::endl;
       w.Key("VARIABLES");
       w.String(c.variable.name);
 
-      std::string entry = c.getName() + ".val";
-      std::cout << "Entries: " << entry << std::endl;
       w.Key("ENTRIES");
-      w.String(entry);
+      w.String(c.getName() + ".val");
 
       std::string cond;
       for( int d = 0; d < c.variable.dim(); ++d )
@@ -819,12 +735,9 @@ void printCoefficients(
             cond += c.equation.name + "." + c.equation.getDomName(d);
          }
       }
-      std::cout << "Condition: " << cond << std::endl;
-
       w.Key("CONDITION");
       w.String(cond);
 
-      std::cout << std::endl;
       w.EndObject();
    }
    w.EndArray();
@@ -898,8 +811,6 @@ int main(
 
    printInputDataModel(writer, dct);
 
-   std::cout << std::endl;
-   std::cout << "DATA" << std::endl;
    writer.Key("DATA");
    writer.StartObject();
    printIndexData(writer, gmo, dct);
