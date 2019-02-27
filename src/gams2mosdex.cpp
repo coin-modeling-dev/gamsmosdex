@@ -16,6 +16,8 @@
 #include "gevmcc.h"
 #include "dctmcc.h"
 
+#include "loadgms.h"
+
 class Domain
 {
 public:
@@ -768,11 +770,13 @@ int main(
    char** argv
 )
 {
-   char buffer[GMS_SSSIZE];
    gmoHandle_t gmo;
    gevHandle_t gev;
    dctHandle_t dct;
    int rc = EXIT_FAILURE;
+
+#if 0
+   char buffer[GMS_SSSIZE];
 
    if( argc < 2 )
    {
@@ -807,6 +811,10 @@ int main(
       fprintf(stderr, "Could not load model data.\n");
       goto TERMINATE;
    }
+#endif
+
+   if( loadGMS(&gmo, &gev, argv[1]) != RETURN_OK )
+      goto TERMINATE;
 
    gevTerminateUninstall(gev);
    gmoObjReformSet(gmo, 1);
@@ -848,6 +856,7 @@ int main(
 
 
    rc = EXIT_SUCCESS;
+   freeGMS(&gmo, &gev);
 
 TERMINATE:
 
