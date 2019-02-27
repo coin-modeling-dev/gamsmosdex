@@ -300,7 +300,7 @@ void analyzeObjective(
    int uelIdxs[GMS_MAX_INDEX_DIM];
    int dim;
 
-   int nz = gmoNZ(gmo);
+   int nz = gmoObjNZ(gmo);
    int* colidx = new int[nz];
    double* jacval = new double[nz];
 
@@ -813,7 +813,7 @@ int main(
 #endif
 
    if( loadGMS(&gmo, &gev, argv[1]) != RETURN_OK )
-      goto TERMINATE;
+      return EXIT_FAILURE;
 
    if( gmoModelType(gmo) != gmoProc_lp && gmoModelType(gmo) != gmoProc_mip && gmoModelType(gmo) != gmoProc_rmip )
    {
@@ -827,7 +827,11 @@ int main(
    gmoIndexBaseSet(gmo, 0);
 
    dct = (dctHandle_t)gmoDict(gmo);
-   assert(dct != NULL);
+   if( dct == NULL )
+   {
+      std::cerr << "Need GAMS dictionary" << std::endl;
+      goto TERMINATE;
+   }
 
    analyzeDict(gmo, dct);
    analyzeMatrix(gmo, dct);
