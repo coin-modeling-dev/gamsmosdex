@@ -469,15 +469,31 @@ void printIndexData(
             double lb = gmoGetVarLowerOne(gmo, gmoGetjSolver(gmo, idx));
             double ub = gmoGetVarUpperOne(gmo, gmoGetjSolver(gmo, idx));
 
-            if( lb != gmoMinf(gmo) )
+            if( gmoGetVarTypeOne(gmo, gmoGetjSolver(gmo, idx)) == gmovar_B )
             {
-               w.Key("lb");
-               w.Double(lb);
+               if( lb != 0.0 )
+               {
+                  w.Key("lb");
+                  w.Double(lb);
+               }
+               if( ub != 1.0 )
+               {
+                  w.Key("ub");
+                  w.Double(ub);
+               }
             }
-            if( ub != gmoPinf(gmo) )
+            else
             {
-               w.Key("ub");
-               w.Double(ub);
+               if( lb != gmoMinf(gmo) )
+               {
+                  w.Key("lb");
+                  w.Double(lb);
+               }
+               if( ub != gmoPinf(gmo) )
+               {
+                  w.Key("ub");
+                  w.Double(ub);
+               }
             }
          }
          else if( e.type == Symbol::Constraint )
@@ -623,15 +639,31 @@ void printSymbols(
          }
          else
          {
-            if( gmoGetVarLowerOne(gmo, colidx) != gmoMinf(gmo) )
+            if( gmoGetVarTypeOne(gmo, colidx) == gmovar_B )
             {
-               w.Key("LOWER");
-               w.Double(gmoGetVarLowerOne(gmo, colidx));
+               if( gmoGetVarLowerOne(gmo, colidx) != 0.0 )
+               {
+                  w.Key("LOWER");
+                  w.Double(gmoGetVarLowerOne(gmo, colidx));
+               }
+               if( gmoGetVarUpperOne(gmo, colidx) != 1.0 )
+               {
+                  w.Key("UPPER");
+                  w.Double(gmoGetVarUpperOne(gmo, colidx));
+               }
             }
-            if( gmoGetVarUpperOne(gmo, colidx) != gmoPinf(gmo) )
+            else
             {
-               w.Key("UPPER");
-               w.Double(gmoGetVarUpperOne(gmo, colidx));
+               if( gmoGetVarLowerOne(gmo, colidx) != gmoMinf(gmo) )
+               {
+                  w.Key("LOWER");
+                  w.Double(gmoGetVarLowerOne(gmo, colidx));
+               }
+               if( gmoGetVarUpperOne(gmo, colidx) != gmoPinf(gmo) )
+               {
+                  w.Key("UPPER");
+                  w.Double(gmoGetVarUpperOne(gmo, colidx));
+               }
             }
          }
          w.EndObject();
