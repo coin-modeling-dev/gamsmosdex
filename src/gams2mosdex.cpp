@@ -38,7 +38,8 @@ public:
    typedef enum {
       None,
       Variable,
-      Equation
+      Constraint,
+      Objective
    } Type;
 
    Symbol(const char* name_, Symbol::Type type_, int symIdx_)
@@ -153,6 +154,7 @@ std::map<std::pair<int, int>, Coefficient> coefs;
 
 static
 void analyzeDict(
+   gmoHandle_t gmo,
    dctHandle_t dct
    )
 {
@@ -170,8 +172,12 @@ void analyzeDict(
       domains.push_back(Domain(domName, i));
    }
 
+   // make up a symbol for the objective and put it onto position 0 (there is no GAMS symbol at this position)
+   char objName[GMS_SSSIZE];
+   gmoGetObjName(gmo, objName);
+   symbols.push_back(Symbol(objName, Symbol::Objective, 0));
+
    int nsyms = dctNLSyms(dct);
-   symbols.push_back(Symbol("dummy", Symbol::None, 0));
    for( int i = 1; i <= nsyms; ++i )
    {
       char symName[GMS_SSSIZE];
@@ -191,7 +197,7 @@ void analyzeDict(
       if( symType == dctvarSymType )
          type = Symbol::Variable;
       else if( symType == dcteqnSymType )
-         type = Symbol::Equation;
+         type = Symbol::Constraint;
       else
          type = Symbol::None;
       symbols.push_back(Symbol(symName, type, i));
@@ -207,6 +213,9 @@ void analyzeDict(
          symbols.back().dom.push_back(&domains[symDomIdx[d]]);
       }
       std::cout << ") type " << symType << " dim " << symDim << " (" << symText << ")" << std::endl;
+
+      // TODO check whether symbol is actually used in model
+      // if it was the original objective variable or objective constraint, then it could have been reformulated out, though it is still in dct
    }
 
 #if 0
@@ -223,7 +232,8 @@ void analyzeDict(
 
 void analyzeMatrix(
    gmoHandle_t gmo,
-   dctHandle_t dct)
+   dctHandle_t dct
+   )
 {
    double jacval;
    int colidx;
@@ -258,6 +268,51 @@ void analyzeMatrix(
          gmoGetRowJacInfoOne(gmo, rowidx, &jacptr, &jacval, &colidx, &nlflag);
       }
    }
+}
+
+void analyzeObjective(
+   gmoHandle_t gmo,
+   dctHandle_t dct
+   )
+{
+   int symIndex;
+   int uelIdxs[GMS_MAX_INDEX_DIM];
+   int dim;
+
+   int nz = gmoNZ(gmo);
+   int* colidx = new int[nz];
+   double* jacval = new double[nz];
+
+   gmoGetObjSparse(gmo, colidx, jacval, NULL, &nz, &dim);
+
+   for( int i = 0; i < nz; ++i )
+   {
+      dctColUels(dct, colidx[i], &symIndex, uelIdxs, &dim);
+
+      if( coefs.count(std::pair<int,int>(0, symIndex)) == 0 )
+      {
+         coefs.insert(std::pair<std::pair<int,int>, Coefficient>(std::pair<int,int>(0, symIndex), Coefficient(symbols[0], symbols[symIndex])));
+      }
+
+      Coefficient& c(coefs.at(std::pair<int,int>(0, symIndex)));
+      c.entries.push_back(std::tuple<int, int, double>(gmoObjRow(gmo), gmoGetiModel(gmo, colidx[i]), jacval[i]));
+   }
+
+   delete[] colidx;
+   delete[] jacval;
+
+#if 0
+   int objvar = gmoObjVar(gmo);
+
+   dctColUels(dct, objvar, &symIndex, uelIdxs, &dim);
+
+   Symbol& sym(symbols.at(symIndex));
+
+   assert(sym.dim() == 0);
+   assert(sym.type == Symbol::Variable);
+
+   sym.type = Symbol::Objective;
+#endif
 }
 
 // declare index for each variable and equation
@@ -485,13 +540,17 @@ void printSymbols(
    if( type == Symbol::Variable )
    {
       std::cout << "VARIABLES:" << std::endl;
-      w.Key("Variables");
+      w.Key("VARIABLES");
+   }
+   else if( type == Symbol::Constraint )
+   {
+      std::cout << "CONSTRAINTS:" << std::endl;
+      w.Key("CONSTRAINTS");
    }
    else
    {
-      assert(type == Symbol::Equation);
-      std::cout << "CONSTRAINTS:" << std::endl;
-      w.Key("Constraints");
+      std::cout << "DECISION_EXPRESSIONS:" << std::endl;
+      w.Key("DECISION_EXPRESSIONS");
    }
 
    w.StartArray();
@@ -624,12 +683,14 @@ int main(
    gevTerminateUninstall(gev);
    gmoObjReformSet(gmo, 1);
    gmoObjStyleSet(gmo, gmoObjType_Fun);
+   gmoIndexBaseSet(gmo, 0);
 
    dct = (dctHandle_t)gmoDict(gmo);
    assert(dct != NULL);
 
-   analyzeDict(dct);
+   analyzeDict(gmo, dct);
    analyzeMatrix(gmo, dct);
+   analyzeObjective(gmo, dct);
    for( auto& c : coefs )
       c.second.analyzeDomains(dct);
 
@@ -650,7 +711,8 @@ int main(
    writer.EndObject();
 
    printSymbols(writer, dct, Symbol::Variable);
-   printSymbols(writer, dct, Symbol::Equation);
+   printSymbols(writer, dct, Symbol::Constraint);
+   printSymbols(writer, dct, Symbol::Objective);
    printCoefficients(writer, dct);
 
    writer.EndObject();
