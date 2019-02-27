@@ -632,10 +632,10 @@ void printSymbols(
       w.StartObject();
 
       std::cout << "Name: " << e.name << std::endl;
-      w.Key("Name");
+      w.Key("NAME");
       w.String(e.name);
 
-      w.Key("Index");
+      w.Key("INDEX");
       if( e.dim() > 0 )
       {
          std::string indexname = e.name + "_index";
@@ -684,13 +684,13 @@ void printSymbols(
          }
 
          std::cout << "BOUNDS: ";
-         w.Key("Bounds");
+         w.Key("BOUNDS");
          w.StartObject();
          if( e.dim() > 0 )
          {
-            w.Key("Lower");
+            w.Key("LOWER");
             w.String(e.name + "_index.lb");
-            w.Key("Upper");
+            w.Key("UPPER");
             w.String(e.name + "_index.ub");
          }
          else
@@ -698,13 +698,13 @@ void printSymbols(
             if( gmoGetVarLowerOne(gmo, colidx) != gmoMinf(gmo) )
             {
                std::cout << "Lower: " << gmoGetVarLowerOne(gmo, colidx);
-               w.Key("Lower");
+               w.Key("LOWER");
                w.Double(gmoGetVarLowerOne(gmo, colidx));
             }
             if( gmoGetVarUpperOne(gmo, colidx) != gmoPinf(gmo) )
             {
                std::cout << "Upper: " << gmoGetVarUpperOne(gmo, colidx);
-               w.Key("Upper");
+               w.Key("UPPER");
                w.Double(gmoGetVarUpperOne(gmo, colidx));
             }
          }
@@ -796,16 +796,16 @@ void printCoefficients(
       w.StartObject();
 
       std::cout << "Constraints: " << c.equation.name << std::endl;
-      w.Key("Constraints");
+      w.Key("CONSTRAINTS");
       w.String(c.equation.name);
 
       std::cout << "Variables: " << c.variable.name << std::endl;
-      w.Key("Variables");
+      w.Key("VARIABLES");
       w.String(c.variable.name);
 
       std::string entry = c.getName() + ".val";
       std::cout << "Entries: " << entry << std::endl;
-      w.Key("Entries");
+      w.Key("ENTRIES");
       w.String(entry);
 
       std::string cond;
@@ -821,7 +821,7 @@ void printCoefficients(
       }
       std::cout << "Condition: " << cond << std::endl;
 
-      w.Key("Condition");
+      w.Key("CONDITION");
       w.String(cond);
 
       std::cout << std::endl;
