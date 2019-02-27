@@ -171,7 +171,8 @@ void analyzeDict(
    }
 
    int nsyms = dctNLSyms(dct);
-   for( int i = 0; i < nsyms; ++i )
+   symbols.push_back(Symbol("dummy", Symbol::None, 0));
+   for( int i = 1; i <= nsyms; ++i )
    {
       char symName[GMS_SSSIZE];
       char symText[GMS_SSSIZE];
@@ -273,6 +274,7 @@ void printInputDataModel(
    for( auto& e : symbols )
    {
       if( e.type == Symbol::None )
+         continue;
 
       if( e.dim() == 0 )
          continue;
