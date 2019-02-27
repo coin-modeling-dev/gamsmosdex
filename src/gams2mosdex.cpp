@@ -620,6 +620,8 @@ int main(
    }
 
    gevTerminateUninstall(gev);
+   gmoObjReformSet(gmo, 1);
+   gmoObjStyleSet(gmo, gmoObjType_Fun);
 
    dct = (dctHandle_t)gmoDict(gmo);
    assert(dct != NULL);
