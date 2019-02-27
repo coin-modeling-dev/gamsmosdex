@@ -622,8 +622,46 @@ void printSymbols(
          w.String("self");
       }
 
+      if( e.type == Symbol::Variable )
+      {
+         // get a col for this symbol: for bounds if dim=0 and for vartype
+         int uelIndices[GMS_MAX_INDEX_DIM];
+         memset(uelIndices, 0, sizeof(uelIndices));
+         int colidx;
+         void* ret = dctFindFirstRowCol(dct, e.symIdx, uelIndices, &colidx);
+         assert(ret != NULL);
+         colidx = gmoGetjSolver(gmo, colidx);
+         assert(colidx >= 0 && colidx < gmoN(gmo));
+
+         switch( gmoGetVarTypeOne(gmo, colidx) )
+         {
+            case gmovar_B:
+               std::cout << "TYPE: Binary" << std::endl;
+               w.Key("TYPE");
+               w.String("Binary");
+               break;
+            case gmovar_I:
+               std::cout << "TYPE: Integer" << std::endl;
+               w.Key("TYPE");
+               w.String("Integer");
+               break;
+            case gmovar_X:
+               std::cout << "TYPE: Continuous" << std::endl;
+               w.Key("TYPE");
+               w.String("Continuous");
+               break;
+            default:
+               std::cerr << "Unsupported variable type" << std::endl;
+               w.Key("TYPE");
+               w.String("Unsupported");
+               break;
+         }
+
+      }
+
       if( e.type == Symbol::Constraint )
       {
+         // get a row for this symbol: for rhs if dim=0 and for rowsense
          int uelIndices[GMS_MAX_INDEX_DIM];
          memset(uelIndices, 0, sizeof(uelIndices));
          int rowidx;
@@ -668,6 +706,9 @@ void printSymbols(
                w.String("UNSUPPORTED");
                break;
          }
+
+         w.Key("TYPE");
+         w.String("Linear");
       }
 
       std::cout << std::endl;
