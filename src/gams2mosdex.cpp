@@ -359,7 +359,7 @@ void printInputDataModel(
       w.StartObject();
       for( int r = 0; r < c.equation.dim(); ++r )
       {
-         std::string key = c.equation.getDomName(r);
+         std::string key = std::string("*") + c.equation.getDomName(r);
          std::cout << "  " << key << ": String" << std::endl;
          w.Key(key);
          w.String("String");
@@ -370,7 +370,7 @@ void printInputDataModel(
          std::cout << "  ";
          if( c.varDomEqualsEquDom[cd] >= 0 )
              std::cout << "(";
-         std::string key = c.variable.getDomName(cd);
+         std::string key = std::string("*") + c.variable.getDomName(cd);
          std::cout << key << ": String";
          if( c.varDomEqualsEquDom[cd] >= 0 )
             std::cout << ")";
@@ -590,7 +590,7 @@ void printCoefficients(
 {
    std::cout << std::endl;
    std::cout << "COEFFICIENTS:" << std::endl;
-   w.Key("Coefficients");
+   w.Key("COEFFICIENTS");
 
    w.StartArray();
    for( auto& cit : coefs )
