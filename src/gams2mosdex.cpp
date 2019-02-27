@@ -371,7 +371,16 @@ void printInputDataModel(
          w.String("String");
       }
 
-      if( e.type == Symbol::Constraint )
+      if( e.type == Symbol::Variable )
+      {
+         std::cout << "  lb: Double" << std::endl;
+         std::cout << "  ub: Double" << std::endl;
+         w.Key("lb");
+         w.String("Double");
+         w.Key("ub");
+         w.String("Double");
+      }
+      else if( e.type == Symbol::Constraint )
       {
          std::cout << "  rhs: Double" << std::endl;
          w.Key("rhs");
@@ -486,7 +495,24 @@ void printIndexData(
             w.String(uelLabel);
          }
 
-         if( e.type == Symbol::Constraint )
+         if( e.type == Symbol::Variable )
+         {
+            double lb = gmoGetVarLowerOne(gmo, gmoGetjSolver(gmo, idx));
+            double ub = gmoGetVarUpperOne(gmo, gmoGetjSolver(gmo, idx));
+            std::cout << "  lb:" << lb << " ub:" << ub;
+
+            if( lb != gmoMinf(gmo) )
+            {
+               w.Key("lb");
+               w.Double(lb);
+            }
+            if( ub != gmoPinf(gmo) )
+            {
+               w.Key("ub");
+               w.Double(ub);
+            }
+         }
+         else if( e.type == Symbol::Constraint )
          {
             double rhs = gmoGetRhsOne(gmo, gmoGetiSolver(gmo, idx));
             std::cout << "  rhs:" << rhs;
@@ -657,6 +683,32 @@ void printSymbols(
                break;
          }
 
+         std::cout << "BOUNDS: ";
+         w.Key("Bounds");
+         w.StartObject();
+         if( e.dim() > 0 )
+         {
+            w.Key("Lower");
+            w.String(e.name + "_index.lb");
+            w.Key("Upper");
+            w.String(e.name + "_index.ub");
+         }
+         else
+         {
+            if( gmoGetVarLowerOne(gmo, colidx) != gmoMinf(gmo) )
+            {
+               std::cout << "Lower: " << gmoGetVarLowerOne(gmo, colidx);
+               w.Key("Lower");
+               w.Double(gmoGetVarLowerOne(gmo, colidx));
+            }
+            if( gmoGetVarUpperOne(gmo, colidx) != gmoPinf(gmo) )
+            {
+               std::cout << "Upper: " << gmoGetVarUpperOne(gmo, colidx);
+               w.Key("Upper");
+               w.Double(gmoGetVarUpperOne(gmo, colidx));
+            }
+         }
+         w.EndObject();
       }
 
       if( e.type == Symbol::Constraint )
