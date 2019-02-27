@@ -214,8 +214,29 @@ void analyzeDict(
       }
       std::cout << ") type " << symType << " dim " << symDim << " (" << symText << ")" << std::endl;
 
-      // TODO check whether symbol is actually used in model
+      // check whether symbol is actually used in model
       // if it was the original objective variable or objective constraint, then it could have been reformulated out, though it is still in dct
+      // thus, should be enough to do this for 0-dim symbols
+      if( symDim == 0 )
+      {
+         int uelIndices[GMS_MAX_INDEX_DIM];
+         int idx;
+         dctFindFirstRowCol(dct, i, uelIndices, &idx);
+         if( symType == dctvarSymType  )
+         {
+            // FIXME this prints a message if the var is the objective var that has been reformulated out, but then returns -2
+            idx = gmoGetjSolver(gmo, idx);
+            if( idx < 0 || idx >= gmoN(gmo) )
+               symbols.back().type = Symbol::None;
+         }
+         else if( symType == dcteqnSymType )
+         {
+            // FIXME this prints a message if the equ is the objective that has been reformulated out, but then returns -2
+            idx = gmoGetiSolver(gmo, idx);
+            if( idx < 0 || idx >= gmoM(gmo) )
+               symbols.back().type = Symbol::None;
+         }
+      }
    }
 
 #if 0
@@ -255,7 +276,7 @@ void analyzeMatrix(
       gmoGetRowJacInfoOne(gmo, rowidx, &jacptr, &jacval, &colidx, &nlflag);
       while( jacptr != NULL )
       {
-         dctColUels(dct, gmoGetiModel(gmo, colidx), &colSymIdx, colUels, &colSymDim);
+         dctColUels(dct, gmoGetjModel(gmo, colidx), &colSymIdx, colUels, &colSymDim);
 
          if( coefs.count(std::pair<int,int>(rowSymIdx, colSymIdx)) == 0 )
          {
@@ -263,7 +284,7 @@ void analyzeMatrix(
          }
 
          Coefficient& c(coefs.at(std::pair<int,int>(rowSymIdx, colSymIdx)));
-         c.entries.push_back(std::tuple<int, int, double>(gmoGetiModel(gmo, rowidx), gmoGetiModel(gmo, colidx), jacval));
+         c.entries.push_back(std::tuple<int, int, double>(gmoGetiModel(gmo, rowidx), gmoGetjModel(gmo, colidx), jacval));
 
          gmoGetRowJacInfoOne(gmo, rowidx, &jacptr, &jacval, &colidx, &nlflag);
       }
@@ -295,7 +316,7 @@ void analyzeObjective(
       }
 
       Coefficient& c(coefs.at(std::pair<int,int>(0, symIndex)));
-      c.entries.push_back(std::tuple<int, int, double>(gmoObjRow(gmo), gmoGetiModel(gmo, colidx[i]), jacval[i]));
+      c.entries.push_back(std::tuple<int, int, double>(gmoObjRow(gmo), gmoGetjModel(gmo, colidx[i]), jacval[i]));
    }
 
    delete[] colidx;
