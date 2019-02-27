@@ -60,11 +60,11 @@ public:
       return (int)dom.size();
    }
 
-   const std::string& getDomName(
+   std::string getDomName(
       int pos
       )
    {
-      return dom.at(pos)->name;
+      return dom.at(pos)->name + '#' + name;
    }
 };
 
@@ -284,7 +284,7 @@ void printInputDataModel(
       w.StartObject();
       for( int d = 0; d < e.dim(); ++d )
       {
-         std::string key = std::string("*") + e.getDomName(d) + '#' + e.name;
+         std::string key = std::string("*") + e.getDomName(d);
          std::cout << "  " << key << ": String" << std::endl;
          w.Key(key);
          w.String("String");
@@ -302,7 +302,7 @@ void printInputDataModel(
       w.StartObject();
       for( int r = 0; r < c.equation.dim(); ++r )
       {
-         std::string key = c.equation.getDomName(r) + "#" + c.equation.name;
+         std::string key = c.equation.getDomName(r);
          std::cout << "  " << key << ": String" << std::endl;
          w.Key(key);
          w.String("String");
@@ -313,7 +313,7 @@ void printInputDataModel(
          std::cout << "  ";
          if( c.varDomEqualsEquDom[cd] >= 0 )
              std::cout << "(";
-         std::string key = c.variable.getDomName(cd) + '#' + c.variable.name;
+         std::string key = c.variable.getDomName(cd);
          std::cout << key << ": String";
          if( c.varDomEqualsEquDom[cd] >= 0 )
             std::cout << ")";
@@ -389,7 +389,7 @@ void printIndexData(
             uelLabel[0] = '\0';
             dctUelLabel(dct, uelIndices[d], uelLabel, uelLabel, sizeof(uelLabel));
 
-            std::string key = e.getDomName(d) + '#' + e.name;
+            std::string key = e.getDomName(d);
             std::cout << "  " << key << ":" << uelLabel;
 
             w.Key(key);
@@ -434,7 +434,7 @@ void printCoefficientData(
             uelLabel[0] = '\0';
             dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
 
-            std::string key = c.equation.getDomName(d) + '#' + c.equation.name;
+            std::string key = c.equation.getDomName(d);
             std::cout << "  " << key << ":" << uelLabel;
             w.Key(key);
             w.String(uelLabel);
@@ -449,7 +449,7 @@ void printCoefficientData(
             std::cout << "  ";
             if( c.varDomEqualsEquDom[d] >= 0 )
                std::cout << '(';
-            std::string key = c.variable.getDomName(d) + '#' + c.variable.name;
+            std::string key = c.variable.getDomName(d);
             std::cout << key << ":" << uelLabel;
             if( c.varDomEqualsEquDom[d] >= 0 )
                std::cout << ')';
@@ -558,8 +558,8 @@ void printCoefficients(
          {
             if( cond != "" )
                cond += " and ";
-            cond += c.variable.name + "." + c.variable.getDomName(d) + '#' + c.variable.name + " == ";
-            cond += c.equation.name + "." + c.variable.getDomName(d) + '#' + c.equation.name;
+            cond += c.variable.name + "." + c.variable.getDomName(d) + " == ";
+            cond += c.equation.name + "." + c.equation.getDomName(d);
          }
       }
       std::cout << "Condition: " << cond << std::endl;
