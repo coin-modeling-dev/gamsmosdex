@@ -16,61 +16,88 @@
 #include "gevmcc.h"
 #include "dctmcc.h"
 
-class Entity
-{
-public:
-   std::string name;
-   int dim;
-
-   int symIdx;
-
-   enum {
-      Variable,
-      Equation
-   } type;
-};
-
 class Domain
 {
 public:
+   Domain(const char* name_, int domIdx_)
+   : name(name_), domIdx(domIdx_)
+   { }
+
    std::string name;
-   std::set<int> uelIdxs;
+
+   // index of domain in GAMS dct
+   int domIdx;
 };
+
+// domains, indexed by Dct domain index
+std::vector<Domain> domains;
+
+class Symbol
+{
+public:
+   typedef enum {
+      None,
+      Variable,
+      Equation
+   } Type;
+
+   Symbol(const char* name_, Symbol::Type type_, int symIdx_)
+   : name(name_), symIdx(symIdx_), type(type_)
+   { }
+
+   std::string name;
+
+   // index of symbol in GAMS dct
+   int symIdx;
+
+   std::string text;
+   std::vector<Domain*> dom;
+
+   Type type;
+
+   int dim()
+   {
+      return (int)dom.size();
+   }
+
+   const std::string& getDomName(
+      int pos
+      )
+   {
+      return dom.at(pos)->name;
+   }
+};
+
 
 
 // a block of coefficients
 class Coefficient
 {
 public:
-   int rowSymIdx;
-   int colSymIdx;
+   Symbol& equation;
+   Symbol& variable;
 
    // for each column domain indicates the row domain index it equals to, or -1 if none
-   int colDomEqualsRowDom[GMS_MAX_INDEX_DIM];
+   int varDomEqualsEquDom[GMS_MAX_INDEX_DIM];
 
-   Coefficient(int rowSymIdx_, int colSymIdx_)
-   : rowSymIdx(rowSymIdx_), colSymIdx(colSymIdx_)
+   Coefficient(Symbol& equ, Symbol& var)
+   : equation(equ), variable(var)
    {
-      for( int i = 0; i < GMS_MAX_INDEX_DIM; ++i )
-         colDomEqualsRowDom[i] = -1;
+      for( int i = 0; i < var.dim(); ++i )
+         varDomEqualsEquDom[i] = -1;
    }
 
    void analyzeDomains(dctHandle_t dct)
    {
-      int rowDomIdx[GMS_MAX_INDEX_DIM];
-      int rowDim;
-      int colDomIdx[GMS_MAX_INDEX_DIM];
-      int colDim;
+      std::vector<Domain*>& equDom(equation.dom);
+      std::vector<Domain*>& varDom(variable.dom);
 
-      dctSymDomIdx(dct, rowSymIdx, rowDomIdx, &rowDim);
-      dctSymDomIdx(dct, colSymIdx, colDomIdx, &colDim);
-
-      // performance of this might be slow
-      for( int c = 0; c < colDim; ++c )
+      // performance of this might be slow (though at most 20x20)
+      for( size_t c = 0; c < equDom.size(); ++c )
       {
-         for( int r = 0; r < rowDim && colDomEqualsRowDom[c] < 0; ++r )
+         for( size_t r = 0; r < varDom.size() && varDomEqualsEquDom[c] < 0; ++r )
          {
-            if( rowDomIdx[r] != colDomIdx[c] )
+            if( equDom[r] != varDom[c] )
                continue;
 
             // std::cout << "compare rowsymbol " << rowSymIdx << " colsymbol " << colSymIdx << " coldim " << c << " rowdim " << r << std::endl;
@@ -86,6 +113,7 @@ public:
                dctRowUels(dct, std::get<0>(e), &symindex, rowUels, &dim);
                dctColUels(dct, std::get<1>(e), &symindex, colUels, &dim);
 
+#if 0
                char uelLabel[GMS_SSSIZE];
                uelLabel[0] = '\0';
                dctUelLabel(dct, rowUels[r], uelLabel, uelLabel, sizeof(uelLabel));
@@ -93,6 +121,7 @@ public:
                uelLabel[0] = '\0';
                dctUelLabel(dct, colUels[c], uelLabel, uelLabel, sizeof(uelLabel));
                // std::cout << "  col: " << colUels[c] << ' ' << uelLabel << std::endl;
+#endif
 
                if( rowUels[r] != colUels[c] )
                {
@@ -102,17 +131,23 @@ public:
             }
 
             if( uelsequal )
-               colDomEqualsRowDom[c] = r;
+               varDomEqualsEquDom[c] = r;
          }
       }
    }
 
+   std::string getName()
+   {
+      return std::string("coef_") + equation.name + "_" + variable.name;
+   }
+
    // equation index, variable index, coefficient
    std::vector<std::tuple<int, int, double> > entries;
-
 };
 
-std::vector<Entity> entities;
+// variables and constraints, indexed by Dct symbol index
+std::vector<Symbol> symbols;
+
 // equation symbol index, variable symbol index
 std::map<std::pair<int, int>, Coefficient> coefs;
 
@@ -124,8 +159,18 @@ void analyzeDict(
    char msg[GMS_SSSIZE];
    dctGetReady(msg, sizeof(msg));
 
-   int nsyms = dctNLSyms(dct);
+   // add dummy domain because dct domain indexing starts at 1!
+   domains.push_back(Domain("dummy", 0));
 
+   int ndoms = dctDomNameCount(dct);
+   for( int i = 1; i <= ndoms; ++i )
+   {
+      char domName[GMS_SSSIZE];
+      dctDomName(dct, i, domName, sizeof(domName));
+      domains.push_back(Domain(domName, i));
+   }
+
+   int nsyms = dctNLSyms(dct);
    for( int i = 0; i < nsyms; ++i )
    {
       char symName[GMS_SSSIZE];
@@ -141,28 +186,26 @@ void analyzeDict(
       symText[0] = '\0';
       dctSymText(dct, i, symText, symText, sizeof(symText));
 
+      Symbol::Type type;
+      if( symType == dctvarSymType )
+         type = Symbol::Variable;
+      else if( symType == dcteqnSymType )
+         type = Symbol::Equation;
+      else
+         type = Symbol::None;
+      symbols.push_back(Symbol(symName, type, i));
+      symbols.back().text = symText;
+
       dctSymDomIdx(dct, i, symDomIdx, &symDim);
       std::cout << "Symbol " << i << " = " << symName << '(';
       for( int d = 0; d < symDim; ++d )
       {
-         char domName[GMS_SSSIZE];
-         dctDomName(dct, symDomIdx[d], domName, sizeof(domName));
          if( d > 0 )
             std::cout << ",";
-         std::cout << domName;
+         std::cout << domains.at(symDomIdx[d]).name;
+         symbols.back().dom.push_back(&domains[symDomIdx[d]]);
       }
       std::cout << ") type " << symType << " dim " << symDim << " (" << symText << ")" << std::endl;
-
-      if( symType == dctvarSymType || symType == dcteqnSymType )
-      {
-         Entity e;
-         e.name = symName;
-         e.dim = symDim;
-         e.symIdx = i;
-         e.type = symType == dctvarSymType ? Entity::Variable : Entity::Equation;
-
-         entities.push_back(e);
-      }
    }
 
 #if 0
@@ -175,181 +218,6 @@ void analyzeDict(
    }
 #endif
 
-}
-
-// declare index for each variable and equation
-void printInputDataModel(
-   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
-   dctHandle_t dct
-   )
-{
-   std::cout << std::endl;
-   std::cout << "INPUT_DATA_MODEL" << std::endl;
-   w.Key("INPUT_DATA_MODEL");
-   w.StartObject();
-
-   int domIdx[GMS_MAX_INDEX_DIM];
-
-   for( auto& e : entities )
-   {
-      if( e.dim == 0 )
-         continue;
-
-      std::string indexname = e.name + "_index";
-      std::cout << indexname << ":" << std::endl;
-      w.Key(indexname);
-
-      int dim;
-      dctSymDomIdx(dct, e.symIdx, domIdx, &dim);
-
-      w.StartObject();
-      for( int d = 0; d < e.dim; ++d )
-      {
-         char domName[GMS_SSSIZE];
-         dctDomName(dct, domIdx[d], domName, sizeof(domName));
-
-         std::string key = std::string("*") + domName + '#' + e.name;
-         std::cout << "  " << key << ": String" << std::endl;
-         w.Key(key);
-         w.String("String");
-      }
-      w.EndObject();
-   }
-
-   for( auto& cit : coefs )
-   {
-      Coefficient& c(cit.second);
-
-      char equName[GMS_SSSIZE];
-      char varName[GMS_SSSIZE];
-
-      dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
-      dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
-
-      std::string indexname = std::string("coef_") + equName + "_" + varName;
-      std::cout << indexname << ":" << std::endl;
-      w.Key(indexname);
-
-      int rowDomIdx[GMS_MAX_INDEX_DIM];
-      int rowDim;
-      int colDomIdx[GMS_MAX_INDEX_DIM];
-      int colDim;
-
-      dctSymDomIdx(dct, c.rowSymIdx, rowDomIdx, &rowDim);
-      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
-
-      char domName[GMS_SSSIZE];
-
-      w.StartObject();
-      for( int r = 0; r < rowDim; ++r )
-      {
-         dctDomName(dct, rowDomIdx[r], domName, sizeof(domName));
-         std::string key = std::string(domName) + "#" + equName;
-         std::cout << "  " << key << ": String" << std::endl;
-         w.Key(key);
-         w.String("String");
-      }
-
-      for( int cd = 0; cd < colDim; ++cd )
-      {
-         char domName[GMS_SSSIZE];
-         dctDomName(dct, colDomIdx[cd], domName, sizeof(domName));
-
-         std::cout << "  ";
-         if( c.colDomEqualsRowDom[cd] >= 0 )
-             std::cout << "(";
-         std::string key = std::string(domName) + '#' + varName;
-         std::cout << key << ": String";
-         if( c.colDomEqualsRowDom[cd] >= 0 )
-            std::cout << ")";
-         std::cout << std::endl;
-
-         if( c.colDomEqualsRowDom[cd] < 0 )
-         {
-            w.Key(key);
-            w.String("String");
-         }
-      }
-
-      std::cout << "  val: Double" << std::endl;
-      w.Key("val");
-      w.String("Double");
-
-      w.EndObject();
-   }
-
-   w.EndObject();
-}
-
-// print index entries for each variable and equation
-static
-void printIndexData(
-   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
-   dctHandle_t dct
-   )
-{
-   int domIdx[GMS_MAX_INDEX_DIM];
-   int uelIndices[GMS_MAX_INDEX_DIM];
-   char domName[GMS_SSSIZE];
-   char uelLabel[GMS_SSSIZE];
-
-   for( auto& e : entities )
-   {
-      if( e.dim == 0 )
-         continue;
-
-      int dim;
-      dctSymDomIdx(dct, e.symIdx, domIdx, &dim);
-
-      std::string indexname = e.name + "_index";
-      std::cout << indexname << ":" << std::endl;
-      w.Key(indexname);
-
-      w.StartArray();
-
-      for( int idx = dctSymOffset(dct, e.symIdx); ; ++idx )
-      {
-         int symIndex;
-         int symDim;
-         assert(idx >= 0);
-
-         if( e.type == Entity::Variable )
-         {
-            if( idx >= dctNCols(dct) )
-               break;
-            dctColUels(dct, idx, &symIndex, uelIndices, &symDim);
-         }
-         else
-         {
-            if( idx >= dctNRows(dct) )
-               break;
-            dctRowUels(dct, idx, &symIndex, uelIndices, &symDim);
-         }
-         if(symIndex != e.symIdx)
-            break;
-
-         assert(symDim == e.dim);
-
-         w.StartObject();
-         for( int d = 0; d < e.dim; ++d )
-         {
-            dctDomName(dct, domIdx[d], domName, sizeof(domName));
-
-            uelLabel[0] = '\0';
-            dctUelLabel(dct, uelIndices[d], uelLabel, uelLabel, sizeof(uelLabel));
-
-            std::string key = std::string(domName) + '#' + e.name;
-            std::cout << "  " << key << ":" << uelLabel;
-
-            w.Key(key);
-            w.String(uelLabel);
-         }
-         std::cout << std::endl;
-         w.EndObject();
-      }
-
-      w.EndArray();
-   }
 }
 
 void analyzeMatrix(
@@ -380,7 +248,7 @@ void analyzeMatrix(
 
          if( coefs.count(std::pair<int,int>(rowSymIdx, colSymIdx)) == 0 )
          {
-            coefs.insert(std::pair<std::pair<int,int>, Coefficient>(std::pair<int,int>(rowSymIdx, colSymIdx), Coefficient(rowSymIdx, colSymIdx)));
+            coefs.insert(std::pair<std::pair<int,int>, Coefficient>(std::pair<int,int>(rowSymIdx, colSymIdx), Coefficient(symbols[rowSymIdx], symbols[colSymIdx])));
          }
 
          Coefficient& c(coefs.at(std::pair<int,int>(rowSymIdx, colSymIdx)));
@@ -391,88 +259,208 @@ void analyzeMatrix(
    }
 }
 
+// declare index for each variable and equation
+void printInputDataModel(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
+   dctHandle_t dct
+   )
+{
+   std::cout << std::endl;
+   std::cout << "INPUT_DATA_MODEL" << std::endl;
+   w.Key("INPUT_DATA_MODEL");
+   w.StartObject();
+
+   for( auto& e : symbols )
+   {
+      if( e.type == Symbol::None )
+
+      if( e.dim() == 0 )
+         continue;
+
+      std::string indexname = e.name + "_index";
+      std::cout << indexname << ":" << std::endl;
+      w.Key(indexname);
+
+      w.StartObject();
+      for( int d = 0; d < e.dim(); ++d )
+      {
+         std::string key = std::string("*") + e.getDomName(d) + '#' + e.name;
+         std::cout << "  " << key << ": String" << std::endl;
+         w.Key(key);
+         w.String("String");
+      }
+      w.EndObject();
+   }
+
+   for( auto& cit : coefs )
+   {
+      Coefficient& c(cit.second);
+
+      std::cout << c.getName() << ":" << std::endl;
+      w.Key(c.getName());
+
+      w.StartObject();
+      for( int r = 0; r < c.equation.dim(); ++r )
+      {
+         std::string key = c.equation.getDomName(r) + "#" + c.equation.name;
+         std::cout << "  " << key << ": String" << std::endl;
+         w.Key(key);
+         w.String("String");
+      }
+
+      for( int cd = 0; cd < c.variable.dim(); ++cd )
+      {
+         std::cout << "  ";
+         if( c.varDomEqualsEquDom[cd] >= 0 )
+             std::cout << "(";
+         std::string key = c.variable.getDomName(cd) + '#' + c.variable.name;
+         std::cout << key << ": String";
+         if( c.varDomEqualsEquDom[cd] >= 0 )
+            std::cout << ")";
+         std::cout << std::endl;
+
+         if( c.varDomEqualsEquDom[cd] < 0 )
+         {
+            w.Key(key);
+            w.String("String");
+         }
+      }
+
+      std::cout << "  val: Double" << std::endl;
+      w.Key("val");
+      w.String("Double");
+
+      w.EndObject();
+   }
+
+   w.EndObject();
+}
+
+// print index entries for each variable and equation
+static
+void printIndexData(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
+   dctHandle_t dct
+   )
+{
+   int uelIndices[GMS_MAX_INDEX_DIM];
+   char uelLabel[GMS_SSSIZE];
+
+   for( auto& e : symbols )
+   {
+      if( e.dim() == 0 )
+         continue;
+
+      if( e.type == Symbol::None )
+         continue;
+
+      std::string indexname = e.name + "_index";
+      std::cout << indexname << ":" << std::endl;
+      w.Key(indexname);
+
+      w.StartArray();
+
+      for( int idx = dctSymOffset(dct, e.symIdx); ; ++idx )
+      {
+         int symIndex;
+         int symDim;
+         assert(idx >= 0);
+
+         if( e.type == Symbol::Variable )
+         {
+            if( idx >= dctNCols(dct) )
+               break;
+            dctColUels(dct, idx, &symIndex, uelIndices, &symDim);
+         }
+         else
+         {
+            if( idx >= dctNRows(dct) )
+               break;
+            dctRowUels(dct, idx, &symIndex, uelIndices, &symDim);
+         }
+         if(symIndex != e.symIdx)
+            break;
+
+         assert(symDim == e.dim());
+
+         w.StartObject();
+         for( int d = 0; d < e.dim(); ++d )
+         {
+            uelLabel[0] = '\0';
+            dctUelLabel(dct, uelIndices[d], uelLabel, uelLabel, sizeof(uelLabel));
+
+            std::string key = e.getDomName(d) + '#' + e.name;
+            std::cout << "  " << key << ":" << uelLabel;
+
+            w.Key(key);
+            w.String(uelLabel);
+         }
+         std::cout << std::endl;
+         w.EndObject();
+      }
+
+      w.EndArray();
+   }
+}
+
 void printCoefficientData(
    rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct
    )
 {
-   char equName[GMS_SSSIZE];
-   char varName[GMS_SSSIZE];
-
    int rowUels[GMS_MAX_INDEX_DIM];
    int colUels[GMS_MAX_INDEX_DIM];
-   int rowDim;
-   int colDim;
 
    char uelLabel[GMS_SSSIZE];
-
-   int rowDomIdx[GMS_MAX_INDEX_DIM];
-   int colDomIdx[GMS_MAX_INDEX_DIM];
-   char domName[GMS_SSSIZE];
 
    for( auto& cit : coefs )
    {
       Coefficient& c(cit.second);
-      dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
-      dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
 
-      dctSymDomIdx(dct, c.rowSymIdx, rowDomIdx, &rowDim);
-      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
-
-      std::string coefname = std::string("coef_") + equName + "_" + varName;
-      std::cout << coefname << ":" << std::endl;
-      w.Key(coefname);
+      std::cout << c.getName() << ":" << std::endl;
+      w.Key(c.getName());
       w.StartArray();
 
       for( auto& e : c.entries )
       {
          int symidx;
-         dctRowUels(dct, std::get<0>(e), &symidx, rowUels, &rowDim);
-         dctColUels(dct, std::get<1>(e), &symidx, colUels, &colDim);
+         int dim;
+         dctRowUels(dct, std::get<0>(e), &symidx, rowUels, &dim);
+         dctColUels(dct, std::get<1>(e), &symidx, colUels, &dim);
 
          w.StartObject();
-         if( rowDim > 0 )
+         for( int d = 0; d < c.equation.dim(); ++d )
          {
-            for( int d = 0; d < rowDim; ++d )
+            uelLabel[0] = '\0';
+            dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
+
+            std::string key = c.equation.getDomName(d) + '#' + c.equation.name;
+            std::cout << "  " << key << ":" << uelLabel;
+            w.Key(key);
+            w.String(uelLabel);
+         }
+         std::cout << ", ";
+
+         for( int d = 0; d < c.variable.dim(); ++d )
+         {
+            uelLabel[0] = '\0';
+            dctUelLabel(dct, colUels[d], uelLabel, uelLabel, sizeof(uelLabel));
+
+            std::cout << "  ";
+            if( c.varDomEqualsEquDom[d] >= 0 )
+               std::cout << '(';
+            std::string key = c.variable.getDomName(d) + '#' + c.variable.name;
+            std::cout << key << ":" << uelLabel;
+            if( c.varDomEqualsEquDom[d] >= 0 )
+               std::cout << ')';
+
+            if( c.varDomEqualsEquDom[d] < 0 )
             {
-               dctDomName(dct, rowDomIdx[d], domName, sizeof(domName));
-
-               uelLabel[0] = '\0';
-               dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
-
-               std::string key = std::string(domName) + '#' + equName;
-               std::cout << "  " << key << ":" << uelLabel;
                w.Key(key);
                w.String(uelLabel);
             }
-            std::cout << ", ";
          }
-
-         if( colDim > 0 )
-         {
-            for( int d = 0; d < colDim; ++d )
-            {
-               dctDomName(dct, colDomIdx[d], domName, sizeof(domName));
-
-               uelLabel[0] = '\0';
-               dctUelLabel(dct, colUels[d], uelLabel, uelLabel, sizeof(uelLabel));
-
-               std::cout << "  ";
-               if( c.colDomEqualsRowDom[d] >= 0 )
-                  std::cout << '(';
-               std::string key  = std::string(domName) + '#' + varName;
-               std::cout << key << ":" << uelLabel;
-               if( c.colDomEqualsRowDom[d] >= 0 )
-                  std::cout << ')';
-
-               if( c.colDomEqualsRowDom[d] < 0 )
-               {
-                  w.Key(key);
-                  w.String(uelLabel);
-               }
-            }
-            std::cout << ", ";
-         }
+         std::cout << ", ";
 
          std::cout << "val:" << std::get<2>(e) << std::endl;
          w.Key("val");
@@ -485,26 +473,27 @@ void printCoefficientData(
    }
 }
 
-void printEntities(
+void printSymbols(
    rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct,
    int type
    )
 {
    std::cout << std::endl;
-   if( type == Entity::Variable )
+   if( type == Symbol::Variable )
    {
       std::cout << "VARIABLES:" << std::endl;
       w.Key("Variables");
    }
    else
    {
+      assert(type == Symbol::Equation);
       std::cout << "CONSTRAINTS:" << std::endl;
       w.Key("Constraints");
    }
 
    w.StartArray();
-   for( auto& e : entities )
+   for( auto& e : symbols )
    {
       if( e.type != type )
          continue;
@@ -516,7 +505,7 @@ void printEntities(
       w.String(e.name);
 
       w.Key("Index");
-      if( e.dim > 0 )
+      if( e.dim() > 0 )
       {
          std::string indexname = e.name + "_index";
          std::cout << "Index: " << indexname << std::endl;
@@ -542,47 +531,35 @@ void printCoefficients(
    std::cout << "COEFFICIENTS:" << std::endl;
    w.Key("Coefficients");
 
-   char equName[GMS_SSSIZE];
-   char varName[GMS_SSSIZE];
-
    w.StartArray();
    for( auto& cit : coefs )
    {
       Coefficient& c(cit.second);
 
-      dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
-      dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
-
       w.StartObject();
 
-      std::cout << "Constraints: " << equName << std::endl;
+      std::cout << "Constraints: " << c.equation.name << std::endl;
       w.Key("Constraints");
-      w.String(equName);
+      w.String(c.equation.name);
 
-      std::cout << "Variables: " << varName << std::endl;
+      std::cout << "Variables: " << c.variable.name << std::endl;
       w.Key("Variables");
-      w.String("varName");
+      w.String(c.variable.name);
 
-      std::string entry = std::string("coef_") + equName + '_' + varName + ".val";
-      std::cout << "Entries: coef_" << equName << "_" << varName << ".val" << std::endl;
+      std::string entry = c.getName() + ".val";
+      std::cout << "Entries: " << entry << std::endl;
       w.Key("Entries");
       w.String(entry);
 
-      int colDomIdx[GMS_MAX_INDEX_DIM];
-      int colDim;
-      dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
-
       std::string cond;
-      for( int d = 0; d < colDim; ++d )
+      for( int d = 0; d < c.variable.dim(); ++d )
       {
-         if( c.colDomEqualsRowDom[d] >= 0 )
+         if( c.varDomEqualsEquDom[d] >= 0 )
          {
-            char domName[GMS_SSSIZE];
-            dctDomName(dct, colDomIdx[d], domName, sizeof(domName));
             if( cond != "" )
                cond += " and ";
-            cond += std::string(varName) + "." + domName + '#' + varName + " == ";
-            cond += std::string(equName) + "." + domName + '#' + equName;
+            cond += c.variable.name + "." + c.variable.getDomName(d) + '#' + c.variable.name + " == ";
+            cond += c.equation.name + "." + c.variable.getDomName(d) + '#' + c.equation.name;
          }
       }
       std::cout << "Condition: " << cond << std::endl;
@@ -668,8 +645,8 @@ int main(
    printCoefficientData(writer, dct);
    writer.EndObject();
 
-   printEntities(writer, dct, Entity::Variable);
-   printEntities(writer, dct, Entity::Equation);
+   printSymbols(writer, dct, Symbol::Variable);
+   printSymbols(writer, dct, Symbol::Equation);
    printCoefficients(writer, dct);
 
    writer.EndObject();
