@@ -8,6 +8,10 @@
 #include <set>
 #include <string>
 
+#define RAPIDJSON_HAS_STDSTRING 1
+#include "rapidjson/prettywriter.h"
+#include "rapidjson/stringbuffer.h"
+
 #include "gmomcc.h"
 #include "gevmcc.h"
 #include "dctmcc.h"
@@ -175,11 +179,14 @@ void analyzeDict(
 
 // declare index for each variable and equation
 void printInputDataModel(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct
    )
 {
    std::cout << std::endl;
    std::cout << "INPUT_DATA_MODEL" << std::endl;
+   w.Key("INPUT_DATA_MODEL");
+   w.StartObject();
 
    int domIdx[GMS_MAX_INDEX_DIM];
 
@@ -188,17 +195,25 @@ void printInputDataModel(
       if( e.dim == 0 )
          continue;
 
-      std::cout << e.name << "_index:" << std::endl;
+      std::string indexname = e.name + "_index";
+      std::cout << indexname << ":" << std::endl;
+      w.Key(indexname);
 
       int dim;
       dctSymDomIdx(dct, e.symIdx, domIdx, &dim);
 
+      w.StartObject();
       for( int d = 0; d < e.dim; ++d )
       {
          char domName[GMS_SSSIZE];
          dctDomName(dct, domIdx[d], domName, sizeof(domName));
-         std::cout << "  *" << domName << "#" << e.name << ": String" << std::endl;
+
+         std::string key = std::string("*") + domName + '#' + e.name;
+         std::cout << "  " << key << ": String" << std::endl;
+         w.Key(key);
+         w.String("String");
       }
+      w.EndObject();
    }
 
    for( auto& cit : coefs )
@@ -211,7 +226,9 @@ void printInputDataModel(
       dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
       dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
 
-      std::cout << "coef_" << equName << "_" << varName << ":" << std::endl;
+      std::string indexname = std::string("coef_") + equName + "_" + varName;
+      std::cout << indexname << ":" << std::endl;
+      w.Key(indexname);
 
       int rowDomIdx[GMS_MAX_INDEX_DIM];
       int rowDim;
@@ -223,10 +240,14 @@ void printInputDataModel(
 
       char domName[GMS_SSSIZE];
 
+      w.StartObject();
       for( int r = 0; r < rowDim; ++r )
       {
          dctDomName(dct, rowDomIdx[r], domName, sizeof(domName));
-         std::cout << "  " << domName << "#" << equName << ": String" << std::endl;
+         std::string key = std::string(domName) + "#" + equName;
+         std::cout << "  " << key << ": String" << std::endl;
+         w.Key(key);
+         w.String("String");
       }
 
       for( int cd = 0; cd < colDim; ++cd )
@@ -237,26 +258,39 @@ void printInputDataModel(
          std::cout << "  ";
          if( c.colDomEqualsRowDom[cd] >= 0 )
              std::cout << "(";
-         std::cout << domName << "#" << varName << ": String";
+         std::string key = std::string(domName) + '#' + varName;
+         std::cout << key << ": String";
          if( c.colDomEqualsRowDom[cd] >= 0 )
             std::cout << ")";
          std::cout << std::endl;
+
+         if( c.colDomEqualsRowDom[cd] < 0 )
+         {
+            w.Key(key);
+            w.String("String");
+         }
       }
 
       std::cout << "  val: Double" << std::endl;
+      w.Key("val");
+      w.String("Double");
+
+      w.EndObject();
    }
+
+   w.EndObject();
 }
 
 // print index entries for each variable and equation
 static
 void printIndexData(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct
    )
 {
-   std::cout << std::endl;
-   std::cout << "DATA" << std::endl;
-
+   int domIdx[GMS_MAX_INDEX_DIM];
    int uelIndices[GMS_MAX_INDEX_DIM];
+   char domName[GMS_SSSIZE];
    char uelLabel[GMS_SSSIZE];
 
    for( auto& e : entities )
@@ -264,7 +298,14 @@ void printIndexData(
       if( e.dim == 0 )
          continue;
 
-      std::cout << e.name << "_index:" << std::endl;
+      int dim;
+      dctSymDomIdx(dct, e.symIdx, domIdx, &dim);
+
+      std::string indexname = e.name + "_index";
+      std::cout << indexname << ":" << std::endl;
+      w.Key(indexname);
+
+      w.StartArray();
 
       for( int idx = dctSymOffset(dct, e.symIdx); ; ++idx )
       {
@@ -289,16 +330,26 @@ void printIndexData(
 
          assert(symDim == e.dim);
 
+         w.StartObject();
          for( int d = 0; d < e.dim; ++d )
          {
+            dctDomName(dct, domIdx[d], domName, sizeof(domName));
+
             uelLabel[0] = '\0';
             dctUelLabel(dct, uelIndices[d], uelLabel, uelLabel, sizeof(uelLabel));
-            std::cout << "  " << uelLabel;
+
+            std::string key = std::string(domName) + '#' + e.name;
+            std::cout << "  " << key << ":" << uelLabel;
+
+            w.Key(key);
+            w.String(uelLabel);
          }
          std::cout << std::endl;
+         w.EndObject();
       }
-   }
 
+      w.EndArray();
+   }
 }
 
 void analyzeMatrix(
@@ -341,6 +392,7 @@ void analyzeMatrix(
 }
 
 void printCoefficientData(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct
    )
 {
@@ -367,13 +419,18 @@ void printCoefficientData(
       dctSymDomIdx(dct, c.rowSymIdx, rowDomIdx, &rowDim);
       dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
 
-      std::cout << "coef_" << equName << "_" << varName << ":" << std::endl;
+      std::string coefname = std::string("coef_") + equName + "_" + varName;
+      std::cout << coefname << ":" << std::endl;
+      w.Key(coefname);
+      w.StartArray();
+
       for( auto& e : c.entries )
       {
          int symidx;
          dctRowUels(dct, std::get<0>(e), &symidx, rowUels, &rowDim);
          dctColUels(dct, std::get<1>(e), &symidx, colUels, &colDim);
 
+         w.StartObject();
          if( rowDim > 0 )
          {
             for( int d = 0; d < rowDim; ++d )
@@ -382,7 +439,11 @@ void printCoefficientData(
 
                uelLabel[0] = '\0';
                dctUelLabel(dct, rowUels[d], uelLabel, uelLabel, sizeof(uelLabel));
-               std::cout << "  " << domName << "#" << equName << ":" << uelLabel;
+
+               std::string key = std::string(domName) + '#' + equName;
+               std::cout << "  " << key << ":" << uelLabel;
+               w.Key(key);
+               w.String(uelLabel);
             }
             std::cout << ", ";
          }
@@ -399,53 +460,92 @@ void printCoefficientData(
                std::cout << "  ";
                if( c.colDomEqualsRowDom[d] >= 0 )
                   std::cout << '(';
-               std::cout << domName << "#" << varName << ":" << uelLabel;
+               std::string key  = std::string(domName) + '#' + varName;
+               std::cout << key << ":" << uelLabel;
                if( c.colDomEqualsRowDom[d] >= 0 )
                   std::cout << ')';
+
+               if( c.colDomEqualsRowDom[d] < 0 )
+               {
+                  w.Key(key);
+                  w.String(uelLabel);
+               }
             }
             std::cout << ", ";
          }
 
          std::cout << "val:" << std::get<2>(e) << std::endl;
+         w.Key("val");
+         w.Double(std::get<2>(e));
+
+         w.EndObject();
       }
+
+      w.EndArray();
    }
 }
 
 void printEntities(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct,
    int type
    )
 {
    std::cout << std::endl;
    if( type == Entity::Variable )
+   {
       std::cout << "VARIABLES:" << std::endl;
+      w.Key("Variables");
+   }
    else
-      std::cout << "EQUATIONS:" << std::endl;
+   {
+      std::cout << "CONSTRAINTS:" << std::endl;
+      w.Key("Constraints");
+   }
 
+   w.StartArray();
    for( auto& e : entities )
    {
       if( e.type != type )
          continue;
 
+      w.StartObject();
+
       std::cout << "Name: " << e.name << std::endl;
+      w.Key("Name");
+      w.String(e.name);
+
+      w.Key("Index");
       if( e.dim > 0 )
-         std::cout << "Index: " << e.name << "_index" << std::endl;
+      {
+         std::string indexname = e.name + "_index";
+         std::cout << "Index: " << indexname << std::endl;
+         w.String(indexname);
+      }
       else
+      {
          std::cout << "Index: self" << std::endl;
+         w.String("self");
+      }
       std::cout << std::endl;
+      w.EndObject();
    }
+   w.EndArray();
 }
 
 void printCoefficients(
+   rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    dctHandle_t dct
    )
 {
    std::cout << std::endl;
    std::cout << "COEFFICIENTS:" << std::endl;
+   w.Key("Coefficients");
 
    char equName[GMS_SSSIZE];
    char varName[GMS_SSSIZE];
 
+   w.StartArray();
    for( auto& cit : coefs )
    {
       Coefficient& c(cit.second);
@@ -453,28 +553,47 @@ void printCoefficients(
       dctSymName(dct, c.rowSymIdx, equName, sizeof(equName));
       dctSymName(dct, c.colSymIdx, varName, sizeof(varName));
 
+      w.StartObject();
+
       std::cout << "Constraints: " << equName << std::endl;
+      w.Key("Constraints");
+      w.String(equName);
+
       std::cout << "Variables: " << varName << std::endl;
+      w.Key("Variables");
+      w.String("varName");
+
+      std::string entry = std::string("coef_") + equName + '_' + varName + ".val";
       std::cout << "Entries: coef_" << equName << "_" << varName << ".val" << std::endl;
-      std::cout << "Condition:";
+      w.Key("Entries");
+      w.String(entry);
 
       int colDomIdx[GMS_MAX_INDEX_DIM];
       int colDim;
       dctSymDomIdx(dct, c.colSymIdx, colDomIdx, &colDim);
 
+      std::string cond;
       for( int d = 0; d < colDim; ++d )
       {
          if( c.colDomEqualsRowDom[d] >= 0 )
          {
             char domName[GMS_SSSIZE];
             dctDomName(dct, colDomIdx[d], domName, sizeof(domName));
-            std::cout << " "    << varName << "." << domName << '#' << varName;
-            std::cout << " == " << equName << "." << domName << "#" << equName;
+            if( cond != "" )
+               cond += " and ";
+            cond += std::string(varName) + "." + domName + '#' + varName + " == ";
+            cond += std::string(equName) + "." + domName + '#' + equName;
          }
       }
+      std::cout << "Condition: " << cond << std::endl;
+
+      w.Key("Condition");
+      w.String(cond);
+
       std::cout << std::endl;
-      std::cout << std::endl;
+      w.EndObject();
    }
+   w.EndArray();
 }
 
 
@@ -533,12 +652,31 @@ int main(
    for( auto& c : coefs )
       c.second.analyzeDomains(dct);
 
-   printInputDataModel(dct);
-   printIndexData(dct);
-   printCoefficientData(dct);
-   printEntities(dct, Entity::Variable);
-   printEntities(dct, Entity::Equation);
-   printCoefficients(dct);
+   {
+
+   rapidjson::StringBuffer s;
+   rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(s);
+   writer.StartObject();
+
+   printInputDataModel(writer, dct);
+
+   std::cout << std::endl;
+   std::cout << "DATA" << std::endl;
+   writer.Key("DATA");
+   writer.StartObject();
+   printIndexData(writer, dct);
+   printCoefficientData(writer, dct);
+   writer.EndObject();
+
+   printEntities(writer, dct, Entity::Variable);
+   printEntities(writer, dct, Entity::Equation);
+   printCoefficients(writer, dct);
+
+   writer.EndObject();
+   std::cout << s.GetString() << std::endl;
+
+   }
+
 
    rc = EXIT_SUCCESS;
 
