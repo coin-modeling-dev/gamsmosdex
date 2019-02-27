@@ -220,9 +220,12 @@ void analyzeDict(
       if( symDim == 0 )
       {
          int uelIndices[GMS_MAX_INDEX_DIM];
+         memset(uelIndices, 0, sizeof(uelIndices));
          int idx;
-         dctFindFirstRowCol(dct, i, uelIndices, &idx);
-         if( symType == dctvarSymType  )
+         void* ret = dctFindFirstRowCol(dct, i, uelIndices, &idx);
+         if( ret == NULL )
+            symbols.back().type = Symbol::None;
+         else if( symType == dctvarSymType  )
          {
             // FIXME this prints a message if the var is the objective var that has been reformulated out, but then returns -2
             idx = gmoGetjSolver(gmo, idx);
@@ -367,6 +370,14 @@ void printInputDataModel(
          w.Key(key);
          w.String("String");
       }
+
+      if( e.type == Symbol::Constraint )
+      {
+         std::cout << "  rhs: Double" << std::endl;
+         w.Key("rhs");
+         w.String("Double");
+      }
+
       w.EndObject();
    }
 
@@ -418,6 +429,7 @@ void printInputDataModel(
 static
 void printIndexData(
    rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
+   gmoHandle_t gmo,
    dctHandle_t dct
    )
 {
@@ -473,6 +485,16 @@ void printIndexData(
             w.Key(key);
             w.String(uelLabel);
          }
+
+         if( e.type == Symbol::Constraint )
+         {
+            double rhs = gmoGetRhsOne(gmo, gmoGetiSolver(gmo, idx));
+            std::cout << "  rhs:" << rhs;
+
+            w.Key("rhs");
+            w.Double(rhs);
+         }
+
          std::cout << std::endl;
          w.EndObject();
       }
@@ -553,6 +575,7 @@ void printCoefficientData(
 
 void printSymbols(
    rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
+   gmoHandle_t gmo,
    dctHandle_t dct,
    int type
    )
@@ -598,6 +621,55 @@ void printSymbols(
          std::cout << "Index: self" << std::endl;
          w.String("self");
       }
+
+      if( e.type == Symbol::Constraint )
+      {
+         int uelIndices[GMS_MAX_INDEX_DIM];
+         memset(uelIndices, 0, sizeof(uelIndices));
+         int rowidx;
+         void* ret = dctFindFirstRowCol(dct, e.symIdx, uelIndices, &rowidx);
+         assert(ret != NULL);
+         rowidx = gmoGetiSolver(gmo, rowidx);
+         assert(rowidx >= 0 && rowidx < gmoM(gmo));
+
+         std::cout << "RHS: ";
+         w.Key("RHS");
+         if( e.dim() > 0 )
+         {
+            std::cout << e.name << "_index.rhs" << std::endl;
+            w.String(e.name + "_index.rhs");
+         }
+         else
+         {
+            std::cout << gmoGetRhsOne(gmo, rowidx) << std::endl;
+            w.Double(gmoGetRhsOne(gmo, rowidx));
+         }
+
+         std::cout << "SENSE: ";
+         w.Key("SENSE");
+         switch( gmoGetEquTypeOne(gmo, rowidx) )
+         {
+            case gmoequ_E :
+            case gmoequ_B :
+               std::cout << "==" << std::endl;;
+               w.String("==");
+               break;
+            case gmoequ_G :
+               std::cout << ">=" << std::endl;;
+               w.String(">=");
+               break;
+            case gmoequ_L :
+               std::cout << "<=" << std::endl;;
+               w.String("<=");
+               break;
+            default:
+               std::cout << "N/A" << std::endl;
+               std::cerr << "Unsupported equation type" << std::endl;
+               w.String("UNSUPPORTED");
+               break;
+         }
+      }
+
       std::cout << std::endl;
       w.EndObject();
    }
@@ -727,13 +799,13 @@ int main(
    std::cout << "DATA" << std::endl;
    writer.Key("DATA");
    writer.StartObject();
-   printIndexData(writer, dct);
+   printIndexData(writer, gmo, dct);
    printCoefficientData(writer, dct);
    writer.EndObject();
 
-   printSymbols(writer, dct, Symbol::Variable);
-   printSymbols(writer, dct, Symbol::Constraint);
-   printSymbols(writer, dct, Symbol::Objective);
+   printSymbols(writer, gmo, dct, Symbol::Variable);
+   printSymbols(writer, gmo, dct, Symbol::Constraint);
+   printSymbols(writer, gmo, dct, Symbol::Objective);
    printCoefficients(writer, dct);
 
    writer.EndObject();
