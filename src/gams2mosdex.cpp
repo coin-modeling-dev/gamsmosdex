@@ -351,7 +351,7 @@ void printInputDataModel(
       if( e.dim() == 0 )
          continue;
 
-      w.Key(e.name + "_index");
+      w.Key(e.name);
 
       w.StartObject();
       for( int d = 0; d < e.dim(); ++d )
@@ -408,9 +408,9 @@ void printInputDataModel(
    w.EndObject();
 }
 
-// print index entries for each variable and equation
+// print symbol index entries, rhs, bounds, for each variable and equation
 static
-void printIndexData(
+void printSymbolData(
    rapidjson::PrettyWriter<rapidjson::StringBuffer>& w,
    gmoHandle_t gmo,
    dctHandle_t dct
@@ -427,7 +427,7 @@ void printIndexData(
       if( e.type == Symbol::None )
          continue;
 
-      w.Key(e.name + "_index");
+      w.Key(e.name);
 
       w.StartArray();
 
@@ -593,7 +593,7 @@ void printSymbols(
       w.Key("INDEX");
       if( e.dim() > 0 )
       {
-         w.String(e.name + "_index");
+         w.String(e.name);
       }
       else
       {
@@ -633,9 +633,9 @@ void printSymbols(
          if( e.dim() > 0 )
          {
             w.Key("LOWER");
-            w.String(e.name + "_index.lb");
+            w.String(e.name + ".lb");
             w.Key("UPPER");
-            w.String(e.name + "_index.ub");
+            w.String(e.name + ".ub");
          }
          else
          {
@@ -677,7 +677,7 @@ void printSymbols(
 
          w.Key("RHS");
          if( e.dim() > 0 )
-            w.String(e.name + "_index.rhs");
+            w.String(e.name + ".rhs");
          else
             w.Double(gmoGetRhsOne(gmo, rowidx));
 
@@ -832,7 +832,7 @@ int main(
 
    writer.Key("DATA");
    writer.StartObject();
-   printIndexData(writer, gmo, dct);
+   printSymbolData(writer, gmo, dct);
    printCoefficientData(writer, dct);
    writer.EndObject();
 
