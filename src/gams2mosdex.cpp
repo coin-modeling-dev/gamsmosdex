@@ -816,6 +816,12 @@ int main(
    if( loadGMS(&gmo, &gev, argv[1]) != RETURN_OK )
       goto TERMINATE;
 
+   if( gmoModelType(gmo) != gmoProc_lp && gmoModelType(gmo) != gmoProc_mip && gmoModelType(gmo) != gmoProc_rmip )
+   {
+      std::cerr << "Can only do LP and MIP" << std::endl;
+      goto TERMINATE;
+   }
+
    gevTerminateUninstall(gev);
    gmoObjReformSet(gmo, 1);
    gmoObjStyleSet(gmo, gmoObjType_Fun);
@@ -868,9 +874,12 @@ TERMINATE:
    if( gev != NULL )
       gevFree(&gev);
 
-   gmoLibraryUnload();
-   gevLibraryUnload();
-   dctLibraryUnload();
+   if( gmoLibraryLoaded() )
+      gmoLibraryUnload();
+   if( gevLibraryLoaded() )
+      gevLibraryUnload();
+   if( dctLibraryLoaded() )
+      dctLibraryUnload();
 
    return rc;
 }
