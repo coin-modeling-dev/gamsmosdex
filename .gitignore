@@ -1,8 +1,9 @@
 # Link to GAMS system directory
 gams
 
-# Executable
+# Executables
 gams2mosdex
+mosdex2gams
 
 # Prerequisites
 *.d

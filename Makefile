@@ -1,10 +1,13 @@
-all : gams2mosdex
+all : gams2mosdex mosdex2gams
 
 gams2mosdex : src/gams2mosdex.o src/loadgms.o gmomcc.o gevmcc.o dctmcc.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
+mosdex2gams : src/mosdex2gams.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
 clean:
-	rm -f *.o src/*.o gams2mosdex
+	rm -f *.o src/*.o gams2mosdex mosdex2gams
 
 %.c : gams/apifiles/C/api/%.c
 	cp $< $@
