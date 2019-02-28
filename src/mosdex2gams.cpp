@@ -6,6 +6,7 @@
 #include <vector>
 #include <set>
 #include <string>
+#include <algorithm>
 
 #define RAPIDJSON_HAS_STDSTRING 1
 #include "rapidjson/filereadstream.h"
@@ -14,6 +15,64 @@
 #include "rapidjson/error/en.h"
 
 using namespace rapidjson;
+
+std::vector<std::string> getDomain(
+   Document&   d,
+   std::string entity,
+   std::string name
+)
+{
+   assert(d.IsObject());
+
+   std::vector<std::string> dom;
+
+   std::string indexname;
+   if( entity == "VARIABLE" )
+   {
+      auto& vars = d["VARIABLES"];
+      for( Value::ConstValueIterator itr = vars.Begin(); itr != vars.End(); ++itr )
+      {
+         if( name == (*itr)["NAME"].GetString() )
+         {
+            indexname = (*itr)["INDEX"].GetString();
+            break;
+         }
+      }
+   }
+   else if( entity == "CONSTRAINT" )
+   {
+      auto& vars = d["CONSTRAINTS"];
+      for( Value::ConstValueIterator itr = vars.Begin(); itr != vars.End(); ++itr )
+      {
+         if( name == (*itr)["NAME"].GetString() )
+         {
+            indexname = (*itr)["INDEX"].GetString();
+            break;
+         }
+      }
+   }
+   else if( entity == "INDEX" )
+   {
+      indexname = name;
+   }
+
+   assert(!indexname.empty());
+
+   auto& inputdata = d["INPUT_DATA_MODEL"][indexname];
+   for( Value::ConstMemberIterator itr = inputdata.MemberBegin(); itr != inputdata.MemberEnd(); ++itr )
+   {
+      // keynames are identfied by leading '*'
+      if( *itr->name.GetString() == '*' )
+      {
+         assert(itr->value.IsString());
+         assert(itr->value == "String");
+
+         dom.push_back(std::string(itr->name.GetString() + 1));
+      }
+   }
+
+   return dom;
+}
 
 int processInputDataModel(
    std::ostream&  out,
@@ -70,6 +129,7 @@ int processInputDataModel(
    }
    out << " /;" << std::endl;
 
+#if 0  // cannot declare first if using "<" feature later on
    // declare parameters and dynamic sets
    for( Value::ConstMemberIterator itr = inputdata.MemberBegin(); itr != inputdata.MemberEnd(); ++itr )
    {
@@ -114,6 +174,7 @@ int processInputDataModel(
          out << "Set " << param << std::endl;
       }
    }
+#endif
 
    return 0;
 }
@@ -292,7 +353,7 @@ int processVariables(
 
          if( bounds.HasMember("UPPER") )
          {
-            out << var["NAME"].GetString() << ".uo(" << vardomstr << ") = ";
+            out << var["NAME"].GetString() << ".up(" << vardomstr << ") = ";
             auto& ub = bounds["UPPER"];
             assert(ub.IsDouble() || ub.IsString());  // integer?
             if( ub.IsDouble() )
@@ -314,6 +375,202 @@ int processVariables(
             out  << ";" << std::endl;
          }
       }
+   }
+
+   return 0;
+}
+
+
+int processConstraints(
+   std::ostream&  out,
+   Document&      d
+   )
+{
+   assert(d.IsObject());
+
+   assert(d.HasMember("CONSTRAINTS"));
+   auto& cons = d["CONSTRAINTS"];
+   assert(cons.IsArray());
+
+   assert(d.HasMember("COEFFICIENTS"));
+   auto& coefs = d["COEFFICIENTS"];
+   assert(coefs.IsArray());
+
+   for( Value::ConstValueIterator itr = cons.Begin(); itr != cons.End(); ++itr )
+   {
+      auto& con = *itr;
+      assert(con.IsObject());
+
+      std::vector<std::string> condom = getDomain(d, "INDEX", con["INDEX"].GetString());
+
+      std::string condomstr;
+      bool first = true;
+      for( auto& d : condom )
+      {
+         if( !first )
+            condomstr += ", ";
+         else
+            first = false;
+         condomstr += d;
+      }
+      //assert(con["TYPE"] == "LINEAR");
+      out << "Equation " << con["NAME"].GetString() << '(' + condomstr << ");" << std::endl;
+
+      out << con["NAME"].GetString() << '(' + condomstr << ")..";
+      // now assemble terms
+      for( Value::ConstValueIterator coefitr = coefs.Begin(); coefitr != coefs.End(); ++coefitr )
+      {
+         assert(coefitr->IsObject());
+         if( !coefitr->HasMember("CONSTRAINTS") )
+            continue;
+         if( strcmp((*coefitr)["CONSTRAINTS"].GetString(), con["NAME"].GetString()) != 0 )
+            continue;
+
+         out << " +";
+         out << (*coefitr)["ENTRIES"].GetString() << " * ";  // TODO this needs more processing
+
+         std::string var = (*coefitr)["VARIABLES"].GetString();
+         std::vector<std::string> vardom = getDomain(d, "VARIABLE", var);
+
+
+         // process matching of variable and equation indices
+         // FIXME assumes very particular format
+         std::string sameasstr;
+         if( coefitr->HasMember("CONDITION") )
+         {
+            std::string cond = (*coefitr)["CONDITION"].GetString();
+            size_t seppos = cond.find(" == ");
+            assert(seppos != std::string::npos);
+
+            std::string first(cond, 0, seppos);
+            std::string second(cond, seppos+4);
+
+            first = std::string(first, first.find(".")+1);
+            second = std::string(second, second.find(".")+1);
+
+            sameasstr = std::string("$sameas(") + first + "," + second + ")";
+         }
+
+         // check which of the constraints domains appear in variables domains
+         std::vector<bool> controlled(vardom.size(), false);
+         size_t ncontrolled = 0;
+         for( auto& ed : condom )
+         {
+            ptrdiff_t pos = std::find(vardom.begin(), vardom.end(), ed) - vardom.begin();
+            if( pos < (int)vardom.size() )
+            {
+               controlled[pos] = true;
+               ++ncontrolled;
+            }
+         }
+
+         if( ncontrolled < vardom.size() )
+         {
+            out << "sum((";
+            bool first = true;
+            for( size_t i = 0; i < vardom.size(); ++i )
+            {
+               if( !controlled[i] )
+               {
+                  if( !first )
+                     out << ",";
+                  else
+                     first = false;
+                  out << vardom[i];
+               }
+            }
+            out << ")" << sameasstr << ",";
+         }
+         out << var << "(";
+         bool first = true;
+         for( auto& d : vardom )
+         {
+            if( !first )
+               out << ",";
+            else
+               first = false;
+            out << d;
+         }
+         out << ")";
+         if( ncontrolled < vardom.size() )
+            out << ")";
+
+      }
+
+
+      std::string rhs = "0.0";
+      std::string sense = "=N=";
+      if( con.HasMember("BOUNDS") )
+      {
+         auto& bounds = con["BOUNDS"];
+         std::string lbstr;
+         std::string ubstr;
+         if( bounds.HasMember("LOWER") )
+         {
+            auto& lb = bounds["LOWER"];
+            assert(lb.IsDouble() || lb.IsString());  // integer?
+            if( lb.IsDouble() )
+            {
+               lbstr = std::to_string(lb.GetDouble());
+            }
+            else try
+            {
+               lbstr = std::to_string(std::stod(lb.GetString()));
+            }
+            catch( const std::invalid_argument& )
+            {
+               // FIXME we now just assume that lb starts with the variable name and we only care about that comes after
+               lbstr = lb.GetString();
+               std::string::size_type pos = lbstr.find(".");
+               assert(pos != std::string::npos);
+               lbstr = std::string(con["INDEX"].GetString()) + "(" + condomstr + ", '" + std::string(lbstr, pos+1) + "')";
+            }
+         }
+
+         if( bounds.HasMember("UPPER") )
+         {
+            auto& ub = bounds["UPPER"];
+            assert(ub.IsDouble() || ub.IsString());  // integer?
+            if( ub.IsDouble() )
+            {
+               ubstr = std::to_string(ub.GetDouble());
+            }
+            else try
+            {
+               ubstr = std::to_string(std::stod(ub.GetString()));
+            }
+            catch( const std::invalid_argument& )
+            {
+               // FIXME we now just assume that lb starts with the variable name and we only care about that comes after
+               ubstr = ub.GetString();
+               std::string::size_type pos = ubstr.find(".");
+               assert(pos != std::string::npos);
+               ubstr = std::string(con["INDEX"].GetString()) + "(" + condomstr + ", '" + std::string(ubstr, pos+1) + "')";
+            }
+         }
+
+         if( lbstr == ubstr )
+         {
+            sense = "=E=";
+            rhs = lbstr;
+         }
+         else if( lbstr.empty() )
+         {
+            sense = "=L=";
+            rhs = ubstr;
+         }
+         else if( ubstr.empty() )
+         {
+            sense = "=R=";
+            rhs = lbstr;
+         }
+         else
+         {
+            assert("RANGED CONSTRAINTS NOT ALLOWED" == NULL);
+         }
+      }
+
+      out << ' ' << sense << ' ' << rhs << ";" << std::endl;
    }
 
    return 0;
@@ -351,6 +608,7 @@ int main(
    processInputDataModel(std::cout, d);
    processData(std::cout, d);
    processVariables(std::cout, d);
+   processConstraints(std::cout, d);
 
    return EXIT_SUCCESS;
 }
