@@ -32,7 +32,7 @@ int processInputDataModel(
    std::set<std::string> othernames;
    for( Value::ConstMemberIterator itr = inputdata.MemberBegin(); itr != inputdata.MemberEnd(); ++itr )
    {
-       //std::cout << "Type of member " << itr->name.GetString() << " is " << itr->value.GetType() << std::endl;
+       //out << "Type of member " << itr->name.GetString() << " is " << itr->value.GetType() << std::endl;
       assert(itr->value.IsObject());
       for( Value::ConstMemberIterator itr2 = itr->value.MemberBegin(); itr2 != itr->value.MemberEnd(); ++itr2 )
       {
@@ -56,19 +56,19 @@ int processInputDataModel(
 
    // declare sets
    for( const std::string& key : keynames )
-      std::cout << "Set " << key << ";" << std::endl;
+      out << "Set " << key << ";" << std::endl;
 
    // declare further set for other column names
-   std::cout << "Set cols / ";
+   out << "Set cols / ";
    bool first = true;
    for( const std::string& col : othernames )
    {
       if( !first )
-         std::cout << ", ";
-      std::cout << col;
+         out << ", ";
+      out << col;
       first = false;
    }
-   std::cout << " /;" << std::endl;
+   out << " /;" << std::endl;
 
    // declare parameters and dynamic sets
    for( Value::ConstMemberIterator itr = inputdata.MemberBegin(); itr != inputdata.MemberEnd(); ++itr )
@@ -106,12 +106,12 @@ int processInputDataModel(
       if( hasdata )
       {
          param += ", cols);";
-         std::cout << "Parameter " << param << std::endl;
+         out << "Parameter " << param << std::endl;
       }
       else
       {
          param += ");";
-         std::cout << "Set " << param << std::endl;
+         out << "Set " << param << std::endl;
       }
    }
 
@@ -168,12 +168,12 @@ int processData(
       if( !other.empty() )
       {
          param += ", cols) /";
-         std::cout << "Parameter " << param << std::endl;
+         out << "Parameter " << param << std::endl;
       }
       else
       {
          param += ") /";
-         std::cout << "Set " << param << std::endl;
+         out << "Set " << param << std::endl;
       }
 
       assert(itr->value.IsArray());
@@ -198,7 +198,7 @@ int processData(
 
          if( other.empty() )
          {
-            std::cout << "  " << keystring << std::endl;
+            out << "  " << keystring << std::endl;
          }
          else
          {
@@ -206,21 +206,118 @@ int processData(
             {
                if( itr2->HasMember(o) )
                {
-                  std::cout << "  " << keystring << ".'" << o << "' " << (*itr2)[o].GetDouble() << std::endl;
+                  out << "  " << keystring << ".'" << o << "' " << (*itr2)[o].GetDouble() << std::endl;
                }
             }
          }
       }
-      std::cout << "/;" << std::endl;
-
-
-
+      out << "/;" << std::endl;
    }
 
    return 0;
-
 }
 
+int processVariables(
+   std::ostream&  out,
+   Document&      d
+   )
+{
+   assert(d.IsObject());
+   assert(d.HasMember("VARIABLES"));
+
+   auto& vars = d["VARIABLES"];
+   assert(vars.IsArray());
+
+   for( Value::ConstValueIterator itr = vars.Begin(); itr != vars.End(); ++itr )
+   {
+      auto& var = *itr;
+      assert(var.IsObject());
+
+      std::string vardomstr;
+
+      auto& decl = d["INPUT_DATA_MODEL"][var["INDEX"]];
+
+      std::vector<std::string> keys;
+      std::set<std::string> other;
+
+      bool first = true;
+      for( Value::ConstMemberIterator itr2 = decl.MemberBegin(); itr2 != decl.MemberEnd(); ++itr2 )
+      {
+         // keynames are identfied by leading '*'
+         if( *itr2->name.GetString() == '*' )
+         {
+            assert(itr2->value.IsString());
+            assert(itr2->value == "String");
+
+            if( !first )
+               vardomstr += ", ";
+            else
+               first = false;
+
+            vardomstr += std::string(itr2->name.GetString() + 1);
+         }
+      }
+      if( var["TYPE"] == "INTEGER")
+         out << "Integer ";   // FIXME this implies a lower bound of 0
+      else if( var["TYPE"] == "BINARY")
+         out << "Binary ";
+      out << "Variable " << var["NAME"].GetString() << '(' + vardomstr << ");" << std::endl;
+
+      if( var.HasMember("BOUNDS") )
+      {
+         auto& bounds = var["BOUNDS"];
+         if( bounds.HasMember("LOWER") )
+         {
+            out << var["NAME"].GetString() << ".lo(" << vardomstr << ") = ";
+            auto& lb = bounds["LOWER"];
+            assert(lb.IsDouble() || lb.IsString());  // integer?
+            if( lb.IsDouble() )
+            {
+                out << lb.GetDouble();
+            }
+            else try
+            {
+               out << std::stod(lb.GetString());
+            }
+            catch( const std::invalid_argument& )
+            {
+               // FIXME we now just assume that lb starts with the variable name and we only care about that comes after
+               std::string lbstr = lb.GetString();
+               std::string::size_type pos = lbstr.find(".");
+               assert(pos != std::string::npos);
+               out << var["INDEX"].GetString() << "(" << vardomstr << ", '" << std::string(lbstr, pos+1) << "')";
+            }
+            out  << ";" << std::endl;
+         }
+
+         if( bounds.HasMember("UPPER") )
+         {
+            out << var["NAME"].GetString() << ".uo(" << vardomstr << ") = ";
+            auto& ub = bounds["UPPER"];
+            assert(ub.IsDouble() || ub.IsString());  // integer?
+            if( ub.IsDouble() )
+            {
+                out << ub.GetDouble();
+            }
+            else try
+            {
+               out << std::stod(ub.GetString());
+            }
+            catch( const std::invalid_argument& )
+            {
+               // FIXME see above for lb
+               std::string ubstr = ub.GetString();
+               std::string::size_type pos = ubstr.find(".");
+               assert(pos != std::string::npos);
+               out << var["INDEX"].GetString() << "(" << vardomstr << ", '" << std::string(ubstr, pos+1) << "')";
+            }
+            out  << ";" << std::endl;
+         }
+      }
+   }
+
+   return 0;
+}
 
 int main(
    int    argc,
@@ -253,6 +350,7 @@ int main(
 
    processInputDataModel(std::cout, d);
    processData(std::cout, d);
+   processVariables(std::cout, d);
 
    return EXIT_SUCCESS;
 }
